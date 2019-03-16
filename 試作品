@@ -1,0 +1,58 @@
+#include <stdio.h>
+#include <math.h>
+int main(void)
+{
+
+	double vx, vy, v0;
+	double g, t, theta, psi;
+	double x, y;
+	int count;
+	FILE *fp;
+
+	fp=fopen("tomo1.txt","w");
+
+	printf("初速度(m/s):");
+	scanf("%lf",&v0);
+
+
+
+	printf("角度(度):");
+	scanf("%lf",&theta);
+
+
+	fprintf(fp,"斜方投射\n");
+
+	t=0.0;
+	g=9.8;
+	psi=(3.14159265358979/180.0)*theta;
+
+	count=0;
+
+	do{
+
+
+		vx=v0*cos(psi);
+        vy=v0*sin(psi)-g*t;
+
+		x=vx*t;
+		y=v0*sin(psi)*t-(g*t*t)/2.0;
+
+		printf("t=%f, vx=%f, vy=%f, x=%f, y=%f\n",t,vx,vy,x ,y);
+
+		fprintf(fp,"%10.4lf %10.4lf %10.4lf %10.4lf %10.4lf\n", t, vx, vy, x, y);
+
+
+		t=t+0.1;
+		count=count+1;
+
+
+	}while(y>=0.0);
+
+	printf("計算回数=%d\n",count);
+	fprintf(fp,"計算回数=%d\n",count);
+
+	fclose(fp);
+
+
+	return 0;
+}
