@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "theme": "Dark",
+  "scan_folders": [
+    "D:\\ゲーム",
+    "D:\\download"
+  ],
+  "categories": [
+    "すべて",
+    "ゲーム",
+    "download",
+    "お気に入り"
+  ],
+  "games": [],
+  "settings": {
+    "auto_search_web_icon": true,
+    "window_width": 1100,
+    "window_height": 720
+  }
+}

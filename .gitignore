@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+venv/
+.venv/
+
+# PyInstaller / Build
+build/
+dist/
+*.spec
+
+# Application Cache & Config
+cache/
+*.log
+
+# Personal/Local Config (必要に応じてコミットから除外)
+# launcher_config.json
