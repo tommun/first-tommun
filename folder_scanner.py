@@ -24,14 +24,23 @@ EXCLUDE_EXE_PATTERNS = [
     r"^ffprobe\.exe$",
     r"^nwjc\.exe$",
     r"^chromedriver\.exe$",
+    r"^notification_helper\.exe$",
+    r"^ueprereqsetup.*\.exe$",
+    r"^.*\.part\d+\.exe$",   # 分割rar/7z自己解凍書庫
+    r"^.*\.sfx\.exe$",
 ]
 
-def clean_game_title(folder_name: str) -> str:
-    """フォルダ名から余分な記号や拡張子を整理して綺麗なタイトルにする"""
-    title = folder_name
-    # zipなどの拡張子除去
-    title = re.sub(r'\.(zip|rar|7z)$', '', title, flags=re.IGNORECASE)
-    # 先頭・末尾のスペース
+# イラスト画像として除外する単語（マニュアル、チャート、移行方法など）
+IGNORE_IMG_KEYWORDS = [
+    "manual", "howtoplay", "chart", "フローチャート", "チャート",
+    "移行", "howto", "guide", "ガイド", "説明", "注意", "error", "log"
+]
+
+def clean_game_title(name: str) -> str:
+    """フォルダ名やexe名から余分な記号や拡張子を整理して綺麗なタイトルにする"""
+    title = name.strip()
+    title = re.sub(r'\.(exe|zip|rar|7z)$', '', title, flags=re.IGNORECASE)
+    # フォルダ名が RJ01014404 などの場合はそのまま返す
     return title.strip()
 
 def extract_rj_code(text: str) -> Optional[str]:
@@ -42,7 +51,7 @@ def extract_rj_code(text: str) -> Optional[str]:
     return None
 
 class FolderScanner:
-    """指定されたフォルダ配下のゲームをスマートにスキャン・検出するクラス"""
+    """指定されたフォルダ配下の全ゲームを網羅的に再帰スキャン・検出するクラス"""
 
     @staticmethod
     def is_excluded_exe(filename: str) -> bool:
@@ -52,122 +61,157 @@ class FolderScanner:
                 return True
         return False
 
-    @classmethod
-    def find_main_exe_in_folder(cls, folder_path: str, max_depth: int = 3) -> Optional[str]:
-        """フォルダ配下からもっともゲーム本体と思われるexeを特定"""
-        root_path = Path(folder_path)
-        if not root_path.exists() or not root_path.is_dir():
+    @staticmethod
+    def find_local_illustration(folder_path: str, root_library_dir: str) -> Optional[str]:
+        """
+        ゲームフォルダ内からすでに存在するイラスト・ジャケット画像（元の画像）を探す。
+        ライブラリ直下の画像やマニュアル画像は除外。
+        """
+        folder = Path(folder_path)
+        root_lib = Path(root_library_dir).resolve()
+        if not folder.exists() or folder.resolve() == root_lib:
             return None
 
         candidates = []
-        folder_name_clean = root_path.name.lower().replace(" ", "").replace("_", "").replace("-", "")
+        # ゲームフォルダ直下およびサブフォルダ（イラスト/等）を探索
+        for ext in ["*.png", "*.jpg", "*.jpeg", "*.webp"]:
+            for p in folder.glob(ext):
+                candidates.append(p)
+            for p in folder.glob(f"イラスト/{ext}"):
+                candidates.append(p)
+            for p in folder.glob(f"*/{ext}"):
+                candidates.append(p)
 
-        for current_dir, dirs, files in os.walk(folder_path):
-            rel_depth = len(Path(current_dir).relative_to(root_path).parts)
-            if rel_depth > max_depth:
-                dirs.clear()
+        best_img = None
+        best_score = 0
+
+        for p in candidates:
+            # ライブラリ直下のファイルは除外
+            if p.parent.resolve() == root_lib:
                 continue
 
-            for f in files:
-                if f.lower().endswith(".exe") and not cls.is_excluded_exe(f):
-                    full_path = os.path.join(current_dir, f)
-                    try:
-                        size = os.path.getsize(full_path)
-                    except Exception:
-                        size = 0
+            stem = p.stem.lower()
+            # マニュアルや移行方法画像は除外
+            if any(ign in stem for ign in IGNORE_IMG_KEYWORDS):
+                continue
+            # 小さすぎるicon.png等は除外
+            try:
+                size = p.stat().st_size
+            except Exception:
+                size = 0
 
-                    score = 0
-                    base_name = f[:-4].lower()
-                    base_clean = base_name.replace(" ", "").replace("_", "").replace("-", "")
+            if "icon" in stem and size < 20000:
+                continue
 
-                    # 1. フォルダ名とexe名の一致
-                    if base_clean in folder_name_clean or folder_name_clean in base_clean:
-                        score += 50
+            score = 0
+            if "ジャケット" in stem or "jacket" in stem:
+                score += 100
+            elif "イラスト" in stem or "illustration" in stem:
+                score += 85
+            elif "cover" in stem or "パッケージ" in stem:
+                score += 75
+            elif "main" in stem or "thumb" in stem:
+                score += 65
+            elif "title" in stem or "banner" in stem:
+                score += 55
+            elif p.parent == folder:
+                # フォルダ直下に置かれた画像
+                if size > 100000: # 100KB以上
+                    score += 45
+                elif size > 30000: # 30KB以上
+                    score += 30
 
-                    # 2. Unityデータフォルダ（{name}_Data）が存在するか
-                    data_dir = os.path.join(current_dir, f"{f[:-4]}_Data")
-                    if os.path.exists(data_dir):
-                        score += 60
+            if score > best_score:
+                best_score = score
+                best_img = p
 
-                    # 3. 一般的なゲーム起動名
-                    if base_name in ["game", "start", "起動", "main", "play"]:
-                        score += 40
-
-                    # 4. 階層の浅さ（浅いほど優先）
-                    score -= (rel_depth * 10)
-
-                    # 5. ファイルサイズ（ある程度大きい方が本体の可能性大）
-                    if size > 10 * 1024 * 1024:  # 10MB以上
-                        score += 30
-                    elif size > 2 * 1024 * 1024: # 2MB以上
-                        score += 15
-                    elif size < 200 * 1024:       # 200KB未満は小さすぎる可能性
-                        score -= 10
-
-                    candidates.append({
-                        "path": full_path,
-                        "name": f,
-                        "score": score,
-                        "size": size,
-                        "depth": rel_depth
-                    })
-
-        if not candidates:
-            return None
-
-        # スコア最大のものを選択
-        candidates.sort(key=lambda x: (x["score"], x["size"]), reverse=True)
-        return candidates[0]["path"]
+        return str(best_img.resolve()) if best_img and best_score >= 30 else None
 
     @classmethod
     def scan_library_folder(cls, root_folder: str, default_category: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        ライブラリフォルダ（例: D:\\ゲーム や D:\\download）直下の各ゲームをスキャン。
+        ライブラリフォルダ（例: D:\\ゲーム, D:\\download）配下を全探索し、
+        zipと重複している場合は解凍済みの実体を優先して全ゲームを検出。
         """
-        root_path = Path(root_folder)
+        root_path = Path(root_folder).resolve()
         if not root_path.exists() or not root_path.is_dir():
             return []
 
         if not default_category:
-            default_category = root_path.name  # "ゲーム" または "download"
+            default_category = root_path.name
 
         results = []
+        games_by_folder = {}
 
-        try:
-            entries = list(root_path.iterdir())
-        except Exception as e:
-            print(f"[FolderScanner] フォルダ走査エラー ({root_folder}): {e}")
-            return []
+        # 全探索
+        for current_dir, dirs, files in os.walk(str(root_path)):
+            cur_p = Path(current_dir)
 
-        for entry in entries:
-            # フォルダ直下のディレクトリをゲーム単位として処理
-            if entry.is_dir():
-                main_exe = cls.find_main_exe_in_folder(str(entry))
-                if main_exe:
-                    folder_name = entry.name
-                    rj_code = extract_rj_code(folder_name) or extract_rj_code(main_exe)
-                    clean_name = clean_game_title(folder_name)
+            # exeファイルを探す
+            exe_files = [f for f in files if f.lower().endswith(".exe") and not cls.is_excluded_exe(f)]
+            if not exe_files:
+                continue
 
-                    results.append({
-                        "name": clean_name,
-                        "path": os.path.normpath(main_exe),
-                        "work_dir": os.path.normpath(os.path.dirname(main_exe)),
-                        "folder_path": os.path.normpath(str(entry)),
-                        "category": default_category,
-                        "rj_code": rj_code,
-                        "root_library": str(root_path)
-                    })
-            elif entry.is_file() and entry.suffix.lower() == ".exe" and not cls.is_excluded_exe(entry.name):
-                # 直下にexeがある場合（単体exe）
-                results.append({
-                    "name": clean_game_title(entry.stem),
-                    "path": os.path.normpath(str(entry)),
-                    "work_dir": os.path.normpath(str(root_path)),
-                    "folder_path": os.path.normpath(str(entry.parent)),
+            # 最もゲーム本体と思われるexeを1つ決定
+            best_exe = None
+            best_score = -999
+            folder_clean = cur_p.name.lower().replace(" ", "").replace("_", "").replace("-", "")
+
+            for f in exe_files:
+                full_exe = cur_p / f
+                try:
+                    size = full_exe.stat().st_size
+                except Exception:
+                    size = 0
+
+                score = 0
+                base_clean = f[:-4].lower().replace(" ", "").replace("_", "").replace("-", "")
+
+                if base_clean in folder_clean or folder_clean in base_clean:
+                    score += 50
+                if (cur_p / f"{f[:-4]}_Data").exists():
+                    score += 60 # Unity
+                if f.lower() in ["game.exe", "start.exe", "起動.exe", "main.exe", "play.exe"]:
+                    score += 45
+                if size > 10 * 1024 * 1024:
+                    score += 30
+                elif size > 2 * 1024 * 1024:
+                    score += 15
+                elif size < 100 * 1024:
+                    score -= 20
+
+                if score > best_score:
+                    best_score = score
+                    best_exe = full_exe
+
+            if best_exe:
+                # ゲーム表示名の決定
+                game_name = cur_p.name
+                # システム系フォルダ名（Game, bin, win64, Windows等）なら親フォルダ名を採用
+                if game_name.lower() in ["game", "bin", "win64", "binaries", "release", "shipping", "x64", "windows"]:
+                    game_name = cur_p.parent.name
+                if game_name.lower() in ["pc", "game", "win"]:
+                    game_name = cur_p.parent.parent.name
+
+                # 作品全体の親フォルダからRJ番号を抽出
+                full_path_str = str(best_exe)
+                rj_code = extract_rj_code(full_path_str)
+
+                # ローカルの元画像（イラスト）を探索
+                local_img = cls.find_local_illustration(str(cur_p), str(root_path))
+                if not local_img and cur_p.parent.resolve() != root_path:
+                    local_img = cls.find_local_illustration(str(cur_p.parent), str(root_path))
+
+                norm_exe_path = os.path.normpath(str(best_exe))
+                games_by_folder[norm_exe_path] = {
+                    "name": clean_game_title(game_name),
+                    "path": norm_exe_path,
+                    "work_dir": os.path.normpath(str(cur_p)),
+                    "folder_path": os.path.normpath(str(cur_p)),
                     "category": default_category,
-                    "rj_code": extract_rj_code(entry.name),
-                    "root_library": str(root_path),
-                    "is_standalone": True
-                })
+                    "rj_code": rj_code,
+                    "local_illustration": local_img,
+                    "root_library": str(root_path)
+                }
 
-        return results
+        return list(games_by_folder.values())

@@ -258,9 +258,20 @@ class ModernLauncherApp(ctk.CTk):
                 cat_name = os.path.basename(os.path.normpath(folder))
                 detected = FolderScanner.scan_library_folder(folder, default_category=cat_name)
                 for item in detected:
-                    if not self.config_mgr.get_game_by_path(item["path"]):
+                    existing = self.config_mgr.get_game_by_path(item["path"])
+                    if not existing:
                         self.config_mgr.add_or_update_game(item)
                         new_count += 1
+                    else:
+                        changed = False
+                        if not existing.get("local_illustration") and item.get("local_illustration"):
+                            existing["local_illustration"] = item["local_illustration"]
+                            changed = True
+                        if not existing.get("rj_code") and item.get("rj_code"):
+                            existing["rj_code"] = item["rj_code"]
+                            changed = True
+                        if changed:
+                            self.config_mgr.save()
             self.after(0, lambda: self._on_background_scan_done(new_count))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -357,13 +368,20 @@ class ModernLauncherApp(ctk.CTk):
                     group_key = k
                 break
 
-        # アイコン取得（ローカルキャッシュまたはWebから）
+        # アイコン取得（元画像優先 -> DLsite公式サムネイル -> Web -> exe -> フォールバック）
         icon_path = game.get("icon_path")
         exe_path = game.get("path", "")
         name = game.get("name", "Game")
+        local_ill = game.get("local_illustration")
+        rj_code = game.get("rj_code")
 
         resolved_icon = self.icon_helper.get_or_create_icon(
-            exe_path, name, preferred_icon_path=icon_path, allow_web_search=True
+            exe_path,
+            name,
+            preferred_icon_path=icon_path,
+            local_illustration=local_ill,
+            rj_code=rj_code,
+            allow_web_search=True
         )
         # 設定に書き戻し（永続化）
         if resolved_icon != icon_path:

@@ -192,11 +192,21 @@ class FolderManagerDialog(ctk.CTkToplevel):
             detected = FolderScanner.scan_library_folder(folder, default_category=cat_name)
             total_found += len(detected)
             for item in detected:
-                # 既存チェック
                 existing = self.config_mgr.get_game_by_path(item["path"])
                 if not existing:
                     self.config_mgr.add_or_update_game(item)
                     new_count += 1
+                else:
+                    # 既存ゲームも最新のローカル画像やRJ番号で強化
+                    changed = False
+                    if not existing.get("local_illustration") and item.get("local_illustration"):
+                        existing["local_illustration"] = item["local_illustration"]
+                        changed = True
+                    if not existing.get("rj_code") and item.get("rj_code"):
+                        existing["rj_code"] = item["rj_code"]
+                        changed = True
+                    if changed:
+                        self.config_mgr.save()
 
         self.after(0, lambda: self._on_scan_finish(new_count, total_found))
 
