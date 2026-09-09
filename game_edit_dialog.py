@@ -22,8 +22,8 @@ class GameEditDialog(ctk.CTkToplevel):
 
         is_new = not bool(game_data)
         self.title("＋ アプリ・ゲームを追加" if is_new else "✏️ ゲーム情報の編集")
-        self.geometry("620x520")
-        self.minsize(560, 460)
+        self.geometry("640x580")
+        self.minsize(580, 520)
 
         self.grab_set()
         self.focus_set()
@@ -47,15 +47,21 @@ class GameEditDialog(ctk.CTkToplevel):
         form_frame.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 
         # 名前
-        ctk.CTkLabel(form_frame, text="ゲーム・アプリ名:", font=get_mac_font(size=13, weight="bold")).grid(row=0, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="ゲーム・アプリ名:", font=get_mac_font(size=13, weight="bold")).grid(row=0, column=0, sticky="w", pady=5)
         self.name_entry = ctk.CTkEntry(form_frame, placeholder_text="例: PURE ONYX", height=32, font=get_mac_font(size=12))
-        self.name_entry.grid(row=0, column=1, sticky="ew", pady=6, padx=(10, 0))
+        self.name_entry.grid(row=0, column=1, sticky="ew", pady=5, padx=(10, 0))
         self.name_entry.insert(0, self.game_data.get("name", ""))
 
+        # 作者・サークル名
+        ctk.CTkLabel(form_frame, text="作者・サークル名:", font=get_mac_font(size=13, weight="bold")).grid(row=1, column=0, sticky="w", pady=5)
+        self.author_entry = ctk.CTkEntry(form_frame, placeholder_text="例: ONEONE1, I'm moralist, 不明", height=32, font=get_mac_font(size=12))
+        self.author_entry.grid(row=1, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.author_entry.insert(0, self.game_data.get("author", "不明"))
+
         # 実行ファイルパス
-        ctk.CTkLabel(form_frame, text="実行ファイル (.exe):", font=get_mac_font(size=13, weight="bold")).grid(row=1, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="実行ファイル (.exe):", font=get_mac_font(size=13, weight="bold")).grid(row=2, column=0, sticky="w", pady=5)
         exe_row = ctk.CTkFrame(form_frame, fg_color="transparent")
-        exe_row.grid(row=1, column=1, sticky="ew", pady=6, padx=(10, 0))
+        exe_row.grid(row=2, column=1, sticky="ew", pady=5, padx=(10, 0))
 
         self.exe_entry = ctk.CTkEntry(exe_row, placeholder_text="C:\\path\\to\\game.exe", height=32, font=get_mac_font(size=12))
         self.exe_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
@@ -64,10 +70,33 @@ class GameEditDialog(ctk.CTkToplevel):
         browse_exe_btn = ctk.CTkButton(exe_row, text="参照...", width=70, height=32, corner_radius=8, font=get_mac_font(size=12), command=self._browse_exe)
         browse_exe_btn.pack(side="right")
 
+        # インストール先フォルダ（場所）の確認・表示
+        ctk.CTkLabel(form_frame, text="ファイルの場所:", font=get_mac_font(size=13, weight="bold")).grid(row=3, column=0, sticky="w", pady=5)
+        fld_row = ctk.CTkFrame(form_frame, fg_color="transparent")
+        fld_row.grid(row=3, column=1, sticky="ew", pady=5, padx=(10, 0))
+
+        initial_folder = self.game_data.get("folder_path") or (os.path.dirname(self.game_data.get("path", "")) if self.game_data.get("path") else "")
+        self.folder_entry = ctk.CTkEntry(fld_row, placeholder_text="フォルダの場所", height=32, font=get_mac_font(size=12))
+        self.folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.folder_entry.insert(0, initial_folder)
+
+        open_fld_btn = ctk.CTkButton(
+            fld_row,
+            text="📂 フォルダを開く",
+            width=110,
+            height=32,
+            corner_radius=8,
+            fg_color="#1f538d",
+            hover_color="#163e69",
+            font=get_mac_font(size=11, weight="bold"),
+            command=self._open_current_folder
+        )
+        open_fld_btn.pack(side="right")
+
         # カテゴリ
-        ctk.CTkLabel(form_frame, text="カテゴリ:", font=get_mac_font(size=13, weight="bold")).grid(row=2, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="カテゴリ:", font=get_mac_font(size=13, weight="bold")).grid(row=4, column=0, sticky="w", pady=5)
         cat_row = ctk.CTkFrame(form_frame, fg_color="transparent")
-        cat_row.grid(row=2, column=1, sticky="ew", pady=6, padx=(10, 0))
+        cat_row.grid(row=4, column=1, sticky="ew", pady=5, padx=(10, 0))
 
         cur_cat = self.game_data.get("category", self.categories[0] if self.categories else "ゲーム")
         if cur_cat not in self.categories:
@@ -77,15 +106,15 @@ class GameEditDialog(ctk.CTkToplevel):
         self.cat_option.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
         # 起動引数（オプション）
-        ctk.CTkLabel(form_frame, text="起動引数 (任意):", font=get_mac_font(size=13)).grid(row=3, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="起動引数 (任意):", font=get_mac_font(size=13)).grid(row=5, column=0, sticky="w", pady=5)
         self.args_entry = ctk.CTkEntry(form_frame, placeholder_text="例: -window-mode", height=32, font=get_mac_font(size=12))
-        self.args_entry.grid(row=3, column=1, sticky="ew", pady=6, padx=(10, 0))
+        self.args_entry.grid(row=5, column=1, sticky="ew", pady=5, padx=(10, 0))
         self.args_entry.insert(0, self.game_data.get("args", ""))
 
         # アイコンプレビューと画像選択
-        ctk.CTkLabel(form_frame, text="アイコン・画像:", font=get_mac_font(size=13, weight="bold")).grid(row=4, column=0, sticky="nw", pady=12)
+        ctk.CTkLabel(form_frame, text="アイコン・画像:", font=get_mac_font(size=13, weight="bold")).grid(row=6, column=0, sticky="nw", pady=10)
         icon_box = ctk.CTkFrame(form_frame, fg_color="transparent")
-        icon_box.grid(row=4, column=1, sticky="ew", pady=12, padx=(10, 0))
+        icon_box.grid(row=6, column=1, sticky="ew", pady=10, padx=(10, 0))
 
         self.icon_preview_lbl = ctk.CTkLabel(icon_box, text="", width=72, height=72, corner_radius=8, fg_color=("gray80", "gray25"))
         self.icon_preview_lbl.pack(side="left", padx=(0, 15))
@@ -197,11 +226,22 @@ class GameEditDialog(ctk.CTkToplevel):
         else:
             self.icon_preview_lbl.configure(text="No Icon")
 
+    def _open_current_folder(self):
+        fld = self.folder_entry.get().strip()
+        if not fld and self.exe_entry.get().strip():
+            fld = os.path.dirname(self.exe_entry.get().strip())
+        if fld and os.path.exists(fld):
+            os.startfile(fld)
+        else:
+            messagebox.showerror("エラー", f"フォルダが見つかりません:\n{fld}")
+
     def _save(self):
         name = self.name_entry.get().strip()
+        author = self.author_entry.get().strip() or "不明"
         exe = self.exe_entry.get().strip()
         cat = self.cat_option.get()
         args = self.args_entry.get().strip()
+        folder = self.folder_entry.get().strip() or (os.path.dirname(exe) if exe else "")
 
         if not name:
             messagebox.showerror("入力エラー", "ゲーム・アプリ名を入力してください。")
@@ -211,8 +251,10 @@ class GameEditDialog(ctk.CTkToplevel):
             return
 
         self.game_data["name"] = name
+        self.game_data["author"] = author
         self.game_data["path"] = exe
-        self.game_data["work_dir"] = os.path.dirname(exe)
+        self.game_data["folder_path"] = folder
+        self.game_data["work_dir"] = folder
         self.game_data["category"] = cat
         self.game_data["args"] = args
         self.game_data["icon_path"] = self.current_icon_path

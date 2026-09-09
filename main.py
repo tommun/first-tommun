@@ -47,6 +47,7 @@ class ModernLauncherApp(ctk.CTk):
         # 状態変数
         self.current_category = "すべて"
         self.search_query = ""
+        self.sort_order = "作品名 (昇順)"  # 作品名 (昇順), 作者・サークル名 (昇順), 登録順
         self.card_images = {}      # CTkImageのキャッシュ保持用
         self.card_widgets = {}     # game_id -> {"card": card, "btn": icon_btn}
         self.grouped_games = {}    # 同一ゲームのグループ情報
@@ -245,6 +246,29 @@ class ModernLauncherApp(ctk.CTk):
             )
             btn.pack(side="left", padx=4, pady=6)
 
+        # ソート選択メニュー (右端配置)
+        sort_container = ctk.CTkFrame(self.cat_frame, fg_color="transparent")
+        sort_container.pack(side="right", padx=6, pady=6)
+
+        sort_lbl = ctk.CTkLabel(sort_container, text="並び替え:", font=get_mac_font(size=11, weight="bold"), text_color="gray60")
+        sort_lbl.pack(side="left", padx=(0, 6))
+
+        sort_menu = ctk.CTkOptionMenu(
+            sort_container,
+            values=["作品名 (昇順)", "作者・サークル名 (昇順)", "登録順"],
+            width=160,
+            height=30,
+            corner_radius=8,
+            font=get_mac_font(size=11),
+            command=self._on_sort_changed
+        )
+        sort_menu.set(self.sort_order)
+        sort_menu.pack(side="left")
+
+    def _on_sort_changed(self, choice: str):
+        self.sort_order = choice
+        self.refresh_games()
+
     def _select_category(self, cat: str):
         self.current_category = cat
         self._refresh_category_bar()
@@ -292,6 +316,9 @@ class ModernLauncherApp(ctk.CTk):
                         if not existing.get("rj_code") and item.get("rj_code"):
                             existing["rj_code"] = item["rj_code"]
                             changed = True
+                        if (not existing.get("author") or existing.get("author") == "不明") and item.get("author") and item.get("author") != "不明":
+                            existing["author"] = item["author"]
+                            changed = True
                         if changed:
                             self.config_mgr.save()
             self.after(0, lambda: self._on_background_scan_done(new_count))
@@ -327,12 +354,25 @@ class ModernLauncherApp(ctk.CTk):
 
             if self.search_query:
                 name = g.get("name", "").lower()
+                author = g.get("author", "").lower()
                 path = g.get("path", "").lower()
                 rj = (g.get("rj_code") or "").lower()
-                if self.search_query not in name and self.search_query not in path and self.search_query not in rj:
+                if (self.search_query not in name and 
+                    self.search_query not in author and 
+                    self.search_query not in path and 
+                    self.search_query not in rj):
                     continue
 
             filtered.append(g)
+
+        # 並び替え（ソート）
+        if self.sort_order == "作品名 (昇順)":
+            filtered.sort(key=lambda x: x.get("name", "").lower())
+        elif self.sort_order == "作者・サークル名 (昇順)":
+            # 不明は末尾に配置
+            filtered.sort(key=lambda x: (1 if x.get("author", "不明") == "不明" else 0, x.get("author", "不明").lower(), x.get("name", "").lower()))
+        elif self.sort_order == "登録順":
+            pass
 
         return filtered
 
@@ -376,7 +416,8 @@ class ModernLauncherApp(ctk.CTk):
     def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
         """Macスタイルの洗練されたカードウィジェットを生成"""
         game_id = game.get("id")
-        card = ctk.CTkFrame(parent, corner_radius=14, fg_color=("gray85", "gray18"), width=186, height=220)
+        # カードサイズ（ゆとりのある高さに調整）
+        card = ctk.CTkFrame(parent, corner_radius=14, fg_color=("gray85", "gray18"), width=196, height=270)
         card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
         card.grid_propagate(False)
 
@@ -404,6 +445,40 @@ class ModernLauncherApp(ctk.CTk):
         except Exception:
             ctk_img = None
 
+        # トップバー（サムネイル確定ロックボタン ＆ 重複バッジ）
+        top_bar = ctk.CTkFrame(card, fg_color="transparent", height=24)
+        top_bar.pack(fill="x", padx=6, pady=(6, 0))
+
+        is_locked = game.get("icon_locked", False)
+        lock_btn = ctk.CTkButton(
+            top_bar,
+            text="🔒 確定済" if is_locked else "🔓 自動探索中",
+            width=76,
+            height=20,
+            corner_radius=6,
+            fg_color="#2b7a4b" if is_locked else ("gray75", "gray28"),
+            hover_color="#1e5835" if is_locked else ("gray65", "gray38"),
+            text_color="white" if is_locked else ("gray30", "gray80"),
+            font=get_mac_font(size=9, weight="bold"),
+            command=lambda g=game: self._toggle_icon_lock(g)
+        )
+        lock_btn.pack(side="left")
+
+        if group_key:
+            dup_count = len(self.grouped_games[group_key])
+            dup_btn = ctk.CTkButton(
+                top_bar,
+                text=f"🔁 重複 {dup_count}",
+                width=64,
+                height=20,
+                corner_radius=6,
+                fg_color="#b8860b",
+                hover_color="#8c6609",
+                font=get_mac_font(size=9, weight="bold"),
+                command=lambda k=group_key: self._open_comparison_dialog(k)
+            )
+            dup_btn.pack(side="right")
+
         # アイコンボタン
         icon_btn = ctk.CTkButton(
             card,
@@ -416,23 +491,7 @@ class ModernLauncherApp(ctk.CTk):
             hover_color=("gray75", "gray28"),
             command=lambda g=game: self._launch_game(g)
         )
-        icon_btn.pack(pady=(10, 4))
-
-        # 重複バッジ
-        if group_key:
-            dup_count = len(self.grouped_games[group_key])
-            dup_btn = ctk.CTkButton(
-                card,
-                text=f"🔁 重複 {dup_count}件 比較",
-                width=120,
-                height=20,
-                corner_radius=6,
-                fg_color="#b8860b",
-                hover_color="#8c6609",
-                font=get_mac_font(size=10, weight="bold"),
-                command=lambda k=group_key: self._open_comparison_dialog(k)
-            )
-            dup_btn.pack(pady=(0, 4))
+        icon_btn.pack(pady=(4, 2))
 
         # ゲームタイトル表示（Macフォント）
         name = game.get("name", "Game")
@@ -440,19 +499,46 @@ class ModernLauncherApp(ctk.CTk):
             card,
             text=name,
             font=get_mac_font(size=12, weight="bold"),
-            wraplength=166,
+            wraplength=176,
             cursor="hand2"
         )
-        name_lbl.pack(padx=8, pady=(0, 6))
+        name_lbl.pack(padx=6, pady=(0, 2))
         name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
 
+        # 作者・サークル名表示
+        author_text = f"👤 {game.get('author', '不明')}"
+        author_lbl = ctk.CTkLabel(
+            card,
+            text=author_text,
+            font=get_mac_font(size=10),
+            text_color=("gray40", "gray65"),
+            wraplength=176
+        )
+        author_lbl.pack(padx=6, pady=(0, 4))
+
+        # ファイルの場所確認・フォルダを開くボタン
+        folder_btn = ctk.CTkButton(
+            card,
+            text="📂 フォルダを開く",
+            width=120,
+            height=22,
+            corner_radius=6,
+            fg_color=("gray75", "gray25"),
+            hover_color=("gray65", "gray35"),
+            text_color=("gray20", "gray85"),
+            font=get_mac_font(size=10),
+            command=lambda g=game: self._open_game_folder(g)
+        )
+        folder_btn.pack(pady=(0, 6))
+
         # 右クリックメニューのバインド
-        for w in [card, icon_btn, name_lbl]:
+        for w in [card, icon_btn, name_lbl, author_lbl]:
             w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
 
         self.card_widgets[game_id] = {
             "card": card,
             "icon_btn": icon_btn,
+            "lock_btn": lock_btn,
             "game": game
         }
 
@@ -496,6 +582,23 @@ class ModernLauncherApp(ctk.CTk):
                     self.after(0, lambda g=game: self._apply_improved_icon(g))
         self.after(0, lambda: self.status_lbl.configure(text=f"✨ 最適化完了: {improved_count} 件のサムネイルを更新しました", text_color="#2b7a4b"))
 
+    def _toggle_icon_lock(self, game: Dict[str, Any]):
+        """ユーザーがサムネイルを確定（ロック）または自動探索再開を切り替え"""
+        cur = game.get("icon_locked", False)
+        game["icon_locked"] = not cur
+        self.config_mgr.save()
+        game_id = game.get("id")
+        if game_id in self.card_widgets and "lock_btn" in self.card_widgets[game_id]:
+            is_locked = game["icon_locked"]
+            self.card_widgets[game_id]["lock_btn"].configure(
+                text="🔒 確定済" if is_locked else "🔓 自動探索中",
+                fg_color="#2b7a4b" if is_locked else ("gray75", "gray28"),
+                hover_color="#1e5835" if is_locked else ("gray65", "gray38"),
+                text_color="white" if is_locked else ("gray30", "gray80")
+            )
+        status_msg = "🔒 サムネイルを確定しました" if game["icon_locked"] else "🔓 サムネイル自動最適化を再開しました"
+        self.status_lbl.configure(text=f"{status_msg}: {game.get('name')}", text_color="#2b7a4b" if game['icon_locked'] else "#4361ee")
+
     def _show_context_menu(self, event, game: Dict[str, Any]):
         """右クリックコンテキストメニュー（Macフォント適用）"""
         menu = tk.Menu(self, tearoff=0, font=(get_mac_font_family(), 10))
@@ -511,6 +614,9 @@ class ModernLauncherApp(ctk.CTk):
             menu.add_command(label=f"🔁 重複・進行度を比較 ({len(self.grouped_games[group_key])}件)", command=lambda: self._open_comparison_dialog(group_key))
             menu.add_separator()
 
+        is_locked = game.get("icon_locked", False)
+        lock_label = "🔓 サムネイル確定を解除 (自動探索に戻す)" if is_locked else "🔒 サムネイルを確定 (現在の画像で固定)"
+        menu.add_command(label=lock_label, command=lambda: self._toggle_icon_lock(game))
         menu.add_command(label="✨ 最適なサムネイルを再検索", command=lambda: self._re_optimize_single_game(game))
         menu.add_command(label="🔍 Webから画像を探す", command=lambda: self._open_icon_picker(game))
         menu.add_command(label="📂 ファイルの場所を開く", command=lambda: self._open_game_folder(game))
@@ -566,6 +672,7 @@ class ModernLauncherApp(ctk.CTk):
         def on_selected(new_icon_path):
             game["icon_path"] = new_icon_path
             game["icon_quality"] = QUALITY_LOCAL_ORIGINAL
+            game["icon_locked"] = True
             self.config_mgr.save()
             self.refresh_games()
 

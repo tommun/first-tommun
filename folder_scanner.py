@@ -50,6 +50,48 @@ def extract_rj_code(text: str) -> Optional[str]:
         return m.group(0).upper()
     return None
 
+def extract_author_from_path(path_str: str, root_lib: str = "") -> str:
+    """パスやフォルダ階層からサークル名・作者名を推定抽出"""
+    p = Path(path_str)
+    parts = list(p.parts)
+
+    # 1. [サークル名] や 【サークル名】 の抽出
+    for part in parts:
+        m = re.search(r'[\[【]([^\]】]+)[\]】]', part)
+        if m:
+            cand = m.group(1).strip()
+            # RJ/VJ番号やバージョン表記、汎用単語は除外
+            if (not re.match(r'^(RJ|VJ)\d+', cand, re.I) and 
+                not re.match(r'^\d+(\.\d+)*', cand) and 
+                cand not in ['製品版', '体験版', 'DL版', 'WIN', 'PC', 'Ver1.1', '1.2.0', 'オフライン版']):
+                return cand
+
+    # 2. 相対パス階層のチェック
+    try:
+        rel_parts = list(p.relative_to(root_lib).parts) if root_lib else parts
+    except Exception:
+        rel_parts = parts
+
+    # 著名・代表的なサークル名パターンの優先認識
+    known_authors = ['ONEONE1', 'Remtairy', '当方丸宝堂', '粗製', 'モンスター研', 'BanameiR', 'まじかみ']
+    for part in rel_parts:
+        for ka in known_authors:
+            if ka.lower() in part.lower():
+                return ka
+        if 'moralist' in part.lower():
+            return "I'm moralist"
+
+    # 3. ライブラリ直下の第1階層フォルダ名が作品特有フォルダの場合
+    generic_folders = ['zip', 'ほんぺん', 'のーとにはいってたやつとりあえず', 'download', 'game', 'bin', 'win64']
+    if len(rel_parts) >= 2:
+        top = rel_parts[0]
+        if (not re.match(r'^(RJ|VJ)\d+', top, re.I) and 
+            top.lower() not in generic_folders and 
+            not top.lower().endswith('.exe')):
+            return top
+
+    return "不明"
+
 class FolderScanner:
     """指定されたフォルダ配下の全ゲームを網羅的に再帰スキャン・検出するクラス"""
 
@@ -202,16 +244,21 @@ class FolderScanner:
                 if not local_img and cur_p.parent.resolve() != root_path:
                     local_img = cls.find_local_illustration(str(cur_p.parent), str(root_path))
 
+                # サークル名・作者名の推定
+                author = extract_author_from_path(full_path_str, str(root_path))
+
                 norm_exe_path = os.path.normpath(str(best_exe))
                 games_by_folder[norm_exe_path] = {
                     "name": clean_game_title(game_name),
+                    "author": author,
                     "path": norm_exe_path,
                     "work_dir": os.path.normpath(str(cur_p)),
                     "folder_path": os.path.normpath(str(cur_p)),
                     "category": default_category,
                     "rj_code": rj_code,
                     "local_illustration": local_img,
-                    "root_library": str(root_path)
+                    "root_library": str(root_path),
+                    "icon_locked": False
                 }
 
         return list(games_by_folder.values())

@@ -435,10 +435,11 @@ class ContinuousIconOptimizer:
         while self.running:
             try:
                 games = self.get_games_fn()
-                # 最高品質に達していないゲームを抽出
+                # 最高品質に達しておらず、かつユーザーによって確定(ロック)されていないゲームを抽出
                 candidates = [
                     g for g in games
                     if g.get("icon_quality", QUALITY_NONE) < QUALITY_DLSITE_OFFICIAL
+                    and not g.get("icon_locked", False)
                 ]
 
                 if not candidates:
