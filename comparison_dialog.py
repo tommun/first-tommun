@@ -5,6 +5,7 @@ import tkinter as tk
 import customtkinter as ctk
 from typing import List, Dict, Any, Optional, Callable
 from game_analyzer import GameAnalyzer
+from font_manager import get_mac_font
 
 class ComparisonDialog(ctk.CTkToplevel):
     """同一ゲームのバージョン・ファイル差分・セーブ進行度の比較と移行を行うモーダルダイアログ"""
@@ -34,14 +35,14 @@ class ComparisonDialog(ctk.CTkToplevel):
         header_lbl = ctk.CTkLabel(
             main_frame,
             text=f"🎮 {title_text}",
-            font=ctk.CTkFont(size=20, weight="bold")
+            font=get_mac_font(size=20, weight="bold")
         )
         header_lbl.pack(anchor="w", padx=20, pady=(15, 5))
 
         desc_lbl = ctk.CTkLabel(
             main_frame,
             text=f"同じゲームが {len(self.game_group)} 箇所で検出されました。バージョンの違いやセーブデータの進行状況を確認できます。",
-            font=ctk.CTkFont(size=13),
+            font=get_mac_font(size=13),
             text_color="gray70"
         )
         desc_lbl.pack(anchor="w", padx=20, pady=(0, 15))
@@ -88,7 +89,7 @@ class ComparisonDialog(ctk.CTkToplevel):
                 text="📦 古い版から最新版へセーブデータを引き継ぐ",
                 fg_color="#2b7a4b",
                 hover_color="#1e5835",
-                font=ctk.CTkFont(size=13, weight="bold"),
+                font=get_mac_font(size=13, weight="bold"),
                 command=lambda: self._migrate_save_data(analyzed_items)
             )
             migrate_btn.pack(side="left", padx=5)
@@ -98,6 +99,7 @@ class ComparisonDialog(ctk.CTkToplevel):
             text="閉じる",
             fg_color="gray30",
             hover_color="gray40",
+            font=get_mac_font(size=12),
             command=self.destroy
         )
         close_btn.pack(side="right", padx=5)
@@ -113,7 +115,7 @@ class ComparisonDialog(ctk.CTkToplevel):
         name_lbl = ctk.CTkLabel(
             top_row,
             text=item["game"].get("name", ""),
-            font=ctk.CTkFont(size=15, weight="bold")
+            font=get_mac_font(size=15, weight="bold")
         )
         name_lbl.pack(side="left")
 
@@ -123,7 +125,7 @@ class ComparisonDialog(ctk.CTkToplevel):
                 text=" 最新バージョン ",
                 fg_color="#1f538d",
                 corner_radius=6,
-                font=ctk.CTkFont(size=11, weight="bold")
+                font=get_mac_font(size=11, weight="bold")
             )
             new_badge.pack(side="left", padx=10)
 
@@ -135,7 +137,7 @@ class ComparisonDialog(ctk.CTkToplevel):
                 text=" ⭐ プレイ中 ",
                 fg_color="#b8860b",
                 corner_radius=6,
-                font=ctk.CTkFont(size=11, weight="bold")
+                font=get_mac_font(size=11, weight="bold")
             )
             save_badge.pack(side="left", padx=5)
 
@@ -158,7 +160,7 @@ class ComparisonDialog(ctk.CTkToplevel):
             info_frame,
             text=info_text,
             justify="left",
-            font=ctk.CTkFont(size=12),
+            font=get_mac_font(size=12),
             text_color="gray80"
         )
         info_lbl.pack(anchor="w")
@@ -172,7 +174,7 @@ class ComparisonDialog(ctk.CTkToplevel):
             text="▶ このバージョンを起動",
             width=160,
             height=30,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=get_mac_font(size=12, weight="bold"),
             command=lambda p=item["path"], w=item["folder"]: self._launch_exe(p, w)
         )
         launch_btn.pack(side="left", padx=(0, 10))
@@ -184,7 +186,7 @@ class ComparisonDialog(ctk.CTkToplevel):
             height=30,
             fg_color="gray35",
             hover_color="gray45",
-            font=ctk.CTkFont(size=12),
+            font=get_mac_font(size=12),
             command=lambda f=item["folder"]: self._open_folder(f)
         )
         folder_btn.pack(side="left")

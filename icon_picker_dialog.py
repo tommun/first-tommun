@@ -6,6 +6,7 @@ import customtkinter as ctk
 from PIL import Image
 from typing import Optional, Callable
 from icon_helper import IconHelper
+from font_manager import get_mac_font
 
 class IconPickerDialog(ctk.CTkToplevel):
     """Web検索結果のサムネイル一覧からアイコンを選択、またはローカルファイルを指定するダイアログ"""
@@ -37,9 +38,9 @@ class IconPickerDialog(ctk.CTkToplevel):
         search_row = ctk.CTkFrame(main_frame, fg_color="transparent")
         search_row.pack(fill="x", padx=15, pady=(15, 10))
 
-        ctk.CTkLabel(search_row, text="検索ワード:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(search_row, text="検索ワード:", font=get_mac_font(size=13, weight="bold")).pack(side="left", padx=(0, 10))
 
-        self.search_entry = ctk.CTkEntry(search_row, placeholder_text="ゲーム名、アニメ名、RJ番号など", height=35)
+        self.search_entry = ctk.CTkEntry(search_row, placeholder_text="ゲーム名、アニメ名、RJ番号など", height=35, font=get_mac_font(size=12))
         self.search_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.search_entry.insert(0, self.current_name)
         self.search_entry.bind("<Return>", lambda e: self._start_search())
@@ -49,6 +50,8 @@ class IconPickerDialog(ctk.CTkToplevel):
             text="Web検索",
             width=90,
             height=35,
+            corner_radius=8,
+            font=get_mac_font(size=12, weight="bold"),
             command=self._start_search
         )
         self.search_btn.pack(side="left", padx=(0, 10))
@@ -58,14 +61,16 @@ class IconPickerDialog(ctk.CTkToplevel):
             text="📁 ローカル画像",
             width=110,
             height=35,
+            corner_radius=8,
             fg_color="gray30",
             hover_color="gray40",
+            font=get_mac_font(size=12),
             command=self._select_local_file
         )
         self.local_file_btn.pack(side="left")
 
         # ステータス表示
-        self.status_lbl = ctk.CTkLabel(main_frame, text="", font=ctk.CTkFont(size=12), text_color="gray70")
+        self.status_lbl = ctk.CTkLabel(main_frame, text="", font=get_mac_font(size=12), text_color="gray70")
         self.status_lbl.pack(anchor="w", padx=15, pady=(0, 5))
 
         # サムネイル表示エリア（スクロール）
@@ -76,14 +81,16 @@ class IconPickerDialog(ctk.CTkToplevel):
         footer_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         footer_frame.pack(fill="x", padx=15, pady=(0, 10))
 
-        ctk.CTkLabel(footer_frame, text="※ クリックした画像がアプリアイコンに即座に設定されます", font=ctk.CTkFont(size=11), text_color="gray60").pack(side="left")
+        ctk.CTkLabel(footer_frame, text="※ クリックした画像がアプリアイコンに即座に設定されます", font=get_mac_font(size=11), text_color="gray60").pack(side="left")
 
         cancel_btn = ctk.CTkButton(
             footer_frame,
             text="キャンセル",
             width=100,
+            corner_radius=8,
             fg_color="gray35",
             hover_color="gray45",
+            font=get_mac_font(size=12),
             command=self.destroy
         )
         cancel_btn.pack(side="right")

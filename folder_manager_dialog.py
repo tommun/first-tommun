@@ -6,6 +6,7 @@ import customtkinter as ctk
 from typing import Callable, List
 from config_manager import ConfigManager
 from folder_scanner import FolderScanner
+from font_manager import get_mac_font
 
 class FolderManagerDialog(ctk.CTkToplevel):
     """スキャン対象フォルダの追加・削除・一括スキャンを管理するダイアログ"""
@@ -33,13 +34,13 @@ class FolderManagerDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             main_frame,
             text="📁 スキャン対象フォルダ一覧",
-            font=ctk.CTkFont(size=18, weight="bold")
+            font=get_mac_font(size=18, weight="bold")
         ).pack(anchor="w", padx=15, pady=(15, 5))
 
         ctk.CTkLabel(
             main_frame,
             text="登録されたフォルダ配下のゲームを自動探索・追加します。新しいフォルダを自由に追加できます。",
-            font=ctk.CTkFont(size=12),
+            font=get_mac_font(size=12),
             text_color="gray70"
         ).pack(anchor="w", padx=15, pady=(0, 15))
 
@@ -51,9 +52,10 @@ class FolderManagerDialog(ctk.CTkToplevel):
             toolbar,
             text="＋ フォルダを追加",
             width=140,
+            corner_radius=8,
             fg_color="#2b7a4b",
             hover_color="#1e5835",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=get_mac_font(size=12, weight="bold"),
             command=self._add_folder
         )
         add_btn.pack(side="left", padx=(0, 10))
@@ -62,7 +64,8 @@ class FolderManagerDialog(ctk.CTkToplevel):
             toolbar,
             text="🔄 全フォルダを一括再スキャン",
             width=180,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
+            font=get_mac_font(size=12, weight="bold"),
             command=self._scan_all
         )
         self.scan_all_btn.pack(side="left")
@@ -72,7 +75,7 @@ class FolderManagerDialog(ctk.CTkToplevel):
         self.list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         # プログレスバー & ステータス
-        self.status_lbl = ctk.CTkLabel(main_frame, text="", font=ctk.CTkFont(size=12))
+        self.status_lbl = ctk.CTkLabel(main_frame, text="", font=get_mac_font(size=12))
         self.status_lbl.pack(anchor="w", padx=15, pady=(0, 5))
 
         self.prog_bar = ctk.CTkProgressBar(main_frame)
@@ -88,8 +91,10 @@ class FolderManagerDialog(ctk.CTkToplevel):
             footer,
             text="閉じる",
             width=100,
+            corner_radius=8,
             fg_color="gray30",
             hover_color="gray40",
+            font=get_mac_font(size=12),
             command=self.destroy
         )
         close_btn.pack(side="right")
@@ -103,19 +108,20 @@ class FolderManagerDialog(ctk.CTkToplevel):
             empty_lbl = ctk.CTkLabel(
                 self.list_frame,
                 text="登録されたフォルダがありません。「フォルダを追加」から追加してください。",
+                font=get_mac_font(size=12),
                 text_color="gray60"
             )
             empty_lbl.pack(pady=30)
             return
 
         for folder in folders:
-            item_card = ctk.CTkFrame(self.list_frame, corner_radius=6, fg_color=("gray85", "gray22"))
+            item_card = ctk.CTkFrame(self.list_frame, corner_radius=8, fg_color=("gray85", "gray22"))
             item_card.pack(fill="x", pady=5, padx=5)
 
             path_lbl = ctk.CTkLabel(
                 item_card,
                 text=f"📂 {folder}",
-                font=ctk.CTkFont(size=13, weight="bold"),
+                font=get_mac_font(size=13, weight="bold"),
                 anchor="w"
             )
             path_lbl.pack(side="left", padx=12, pady=10, fill="x", expand=True)
@@ -126,7 +132,8 @@ class FolderManagerDialog(ctk.CTkToplevel):
                 text="スキャン",
                 width=80,
                 height=28,
-                font=ctk.CTkFont(size=11),
+                corner_radius=6,
+                font=get_mac_font(size=11),
                 command=lambda f=folder: self._scan_single_folder(f)
             )
             scan_btn.pack(side="right", padx=(5, 10))
@@ -137,9 +144,10 @@ class FolderManagerDialog(ctk.CTkToplevel):
                 text="削除",
                 width=60,
                 height=28,
+                corner_radius=6,
                 fg_color="#b22222",
                 hover_color="#8b0000",
-                font=ctk.CTkFont(size=11),
+                font=get_mac_font(size=11),
                 command=lambda f=folder: self._remove_folder(f)
             )
             del_btn.pack(side="right", padx=5)

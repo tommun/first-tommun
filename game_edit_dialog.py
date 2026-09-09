@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Callable
 from PIL import Image
 from icon_helper import IconHelper
 from icon_picker_dialog import IconPickerDialog
+from font_manager import get_mac_font
 
 class GameEditDialog(ctk.CTkToplevel):
     """ゲーム・アプリの追加・編集を行うモーダルダイアログ"""
@@ -39,50 +40,50 @@ class GameEditDialog(ctk.CTkToplevel):
 
         # タイトル
         title_text = "＋ 新しいアプリ・ゲームの登録" if not self.game_data.get("id") else "✏️ ゲーム情報の編集"
-        ctk.CTkLabel(main_frame, text=title_text, font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", padx=15, pady=(15, 15))
+        ctk.CTkLabel(main_frame, text=title_text, font=get_mac_font(size=18, weight="bold")).pack(anchor="w", padx=15, pady=(15, 15))
 
         # フォームグリッド
         form_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         form_frame.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 
         # 名前
-        ctk.CTkLabel(form_frame, text="ゲーム・アプリ名:", font=ctk.CTkFont(size=13, weight="bold")).grid(row=0, column=0, sticky="w", pady=6)
-        self.name_entry = ctk.CTkEntry(form_frame, placeholder_text="例: PURE ONYX", height=32)
+        ctk.CTkLabel(form_frame, text="ゲーム・アプリ名:", font=get_mac_font(size=13, weight="bold")).grid(row=0, column=0, sticky="w", pady=6)
+        self.name_entry = ctk.CTkEntry(form_frame, placeholder_text="例: PURE ONYX", height=32, font=get_mac_font(size=12))
         self.name_entry.grid(row=0, column=1, sticky="ew", pady=6, padx=(10, 0))
         self.name_entry.insert(0, self.game_data.get("name", ""))
 
         # 実行ファイルパス
-        ctk.CTkLabel(form_frame, text="実行ファイル (.exe):", font=ctk.CTkFont(size=13, weight="bold")).grid(row=1, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="実行ファイル (.exe):", font=get_mac_font(size=13, weight="bold")).grid(row=1, column=0, sticky="w", pady=6)
         exe_row = ctk.CTkFrame(form_frame, fg_color="transparent")
         exe_row.grid(row=1, column=1, sticky="ew", pady=6, padx=(10, 0))
 
-        self.exe_entry = ctk.CTkEntry(exe_row, placeholder_text="C:\\path\\to\\game.exe", height=32)
+        self.exe_entry = ctk.CTkEntry(exe_row, placeholder_text="C:\\path\\to\\game.exe", height=32, font=get_mac_font(size=12))
         self.exe_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
         self.exe_entry.insert(0, self.game_data.get("path", ""))
 
-        browse_exe_btn = ctk.CTkButton(exe_row, text="参照...", width=70, height=32, command=self._browse_exe)
+        browse_exe_btn = ctk.CTkButton(exe_row, text="参照...", width=70, height=32, corner_radius=8, font=get_mac_font(size=12), command=self._browse_exe)
         browse_exe_btn.pack(side="right")
 
         # カテゴリ
-        ctk.CTkLabel(form_frame, text="カテゴリ:", font=ctk.CTkFont(size=13, weight="bold")).grid(row=2, column=0, sticky="w", pady=6)
+        ctk.CTkLabel(form_frame, text="カテゴリ:", font=get_mac_font(size=13, weight="bold")).grid(row=2, column=0, sticky="w", pady=6)
         cat_row = ctk.CTkFrame(form_frame, fg_color="transparent")
         cat_row.grid(row=2, column=1, sticky="ew", pady=6, padx=(10, 0))
 
         cur_cat = self.game_data.get("category", self.categories[0] if self.categories else "ゲーム")
         if cur_cat not in self.categories:
             self.categories.append(cur_cat)
-        self.cat_option = ctk.CTkOptionMenu(cat_row, values=self.categories, height=32)
+        self.cat_option = ctk.CTkOptionMenu(cat_row, values=self.categories, height=32, corner_radius=8, font=get_mac_font(size=12))
         self.cat_option.set(cur_cat)
         self.cat_option.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
         # 起動引数（オプション）
-        ctk.CTkLabel(form_frame, text="起動引数 (任意):", font=ctk.CTkFont(size=13)).grid(row=3, column=0, sticky="w", pady=6)
-        self.args_entry = ctk.CTkEntry(form_frame, placeholder_text="例: -window-mode", height=32)
+        ctk.CTkLabel(form_frame, text="起動引数 (任意):", font=get_mac_font(size=13)).grid(row=3, column=0, sticky="w", pady=6)
+        self.args_entry = ctk.CTkEntry(form_frame, placeholder_text="例: -window-mode", height=32, font=get_mac_font(size=12))
         self.args_entry.grid(row=3, column=1, sticky="ew", pady=6, padx=(10, 0))
         self.args_entry.insert(0, self.game_data.get("args", ""))
 
         # アイコンプレビューと画像選択
-        ctk.CTkLabel(form_frame, text="アイコン・画像:", font=ctk.CTkFont(size=13, weight="bold")).grid(row=4, column=0, sticky="nw", pady=12)
+        ctk.CTkLabel(form_frame, text="アイコン・画像:", font=get_mac_font(size=13, weight="bold")).grid(row=4, column=0, sticky="nw", pady=12)
         icon_box = ctk.CTkFrame(form_frame, fg_color="transparent")
         icon_box.grid(row=4, column=1, sticky="ew", pady=12, padx=(10, 0))
 
@@ -96,7 +97,9 @@ class GameEditDialog(ctk.CTkToplevel):
             btn_box,
             text="🔍 Webから画像を探す",
             height=32,
+            corner_radius=8,
             fg_color="#1f538d",
+            font=get_mac_font(size=12),
             command=self._open_web_search
         )
         web_search_btn.pack(anchor="w", pady=(0, 6))
@@ -105,8 +108,10 @@ class GameEditDialog(ctk.CTkToplevel):
             btn_box,
             text="📁 画像ファイルを選択",
             height=32,
+            corner_radius=8,
             fg_color="gray35",
             hover_color="gray45",
+            font=get_mac_font(size=12),
             command=self._browse_icon_file
         )
         file_icon_btn.pack(anchor="w")
@@ -122,9 +127,10 @@ class GameEditDialog(ctk.CTkToplevel):
             text="保存する",
             width=120,
             height=36,
+            corner_radius=8,
             fg_color="#2b7a4b",
             hover_color="#1e5835",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=get_mac_font(size=13, weight="bold"),
             command=self._save
         )
         save_btn.pack(side="left")
@@ -134,8 +140,10 @@ class GameEditDialog(ctk.CTkToplevel):
             text="キャンセル",
             width=100,
             height=36,
+            corner_radius=8,
             fg_color="gray30",
             hover_color="gray40",
+            font=get_mac_font(size=12),
             command=self.destroy
         )
         cancel_btn.pack(side="right")

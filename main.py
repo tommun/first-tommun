@@ -17,19 +17,20 @@ except ImportError:
     HAS_WINDND = False
 
 from config_manager import ConfigManager
-from icon_helper import IconHelper
+from icon_helper import IconHelper, ContinuousIconOptimizer, QUALITY_DLSITE_OFFICIAL, QUALITY_LOCAL_ORIGINAL
 from folder_scanner import FolderScanner
 from game_analyzer import GameAnalyzer
 from comparison_dialog import ComparisonDialog
 from icon_picker_dialog import IconPickerDialog
 from folder_manager_dialog import FolderManagerDialog
 from game_edit_dialog import GameEditDialog
+from font_manager import get_mac_font, get_mac_font_family
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class ModernLauncherApp(ctk.CTk):
-    """モダンなカード型 ＋ リアルタイム検索 exeランチャー"""
+    """Mac準拠デザイン ＋ リアルタイム検索 ＋ 継続的サムネイル最適化 exeランチャー"""
 
     def __init__(self):
         super().__init__()
@@ -46,36 +47,45 @@ class ModernLauncherApp(ctk.CTk):
         # 状態変数
         self.current_category = "すべて"
         self.search_query = ""
-        self.card_images = {}   # CTkImageのキャッシュ保持用
-        self.grouped_games = {} # 同一ゲームのグループ情報
+        self.card_images = {}      # CTkImageのキャッシュ保持用
+        self.card_widgets = {}     # game_id -> {"card": card, "btn": icon_btn}
+        self.grouped_games = {}    # 同一ゲームのグループ情報
 
         self._build_ui()
         self._setup_drag_and_drop()
+
+        # 継続的サムネイル最適化ワーカーの初期化と開始
+        self.optimizer = ContinuousIconOptimizer(
+            self.icon_helper,
+            get_games_fn=lambda: self.config_mgr.games,
+            on_updated_callback=self._on_game_icon_improved
+        )
+        self.optimizer.start()
 
         # 起動時処理
         self.after(200, self._initial_check_and_load)
 
     def _build_ui(self):
         # 1. 最上部ヘッダー
-        self.header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("gray90", "gray15"))
+        self.header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("gray90", "gray14"))
         self.header_frame.pack(fill="x", side="top")
 
-        # タイトルロゴ
+        # タイトルロゴ（Macフォント）
         logo_lbl = ctk.CTkLabel(
             self.header_frame,
             text="🎮 GameLauncher",
-            font=ctk.CTkFont(size=20, weight="bold")
+            font=get_mac_font(size=20, weight="bold")
         )
         logo_lbl.pack(side="left", padx=20)
 
-        # リアルタイム検索バー（ハイブリッドUIの中核）
+        # リアルタイム検索バー（Macスタイル・角丸）
         self.search_entry = ctk.CTkEntry(
             self.header_frame,
             placeholder_text="🔍 ゲーム・アプリを即座に検索... (Enterで先頭起動)",
             width=360,
             height=36,
             corner_radius=18,
-            font=ctk.CTkFont(size=13)
+            font=get_mac_font(size=13)
         )
         self.search_entry.pack(side="left", padx=15, fill="x", expand=True)
         self.search_entry.bind("<KeyRelease>", self._on_search_changed)
@@ -85,14 +95,28 @@ class ModernLauncherApp(ctk.CTk):
         btn_container = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         btn_container.pack(side="right", padx=15)
 
+        self.optimize_btn = ctk.CTkButton(
+            btn_container,
+            text="✨ サムネ最適化中",
+            width=120,
+            height=34,
+            corner_radius=8,
+            fg_color="#4361ee",
+            hover_color="#3a0ca3",
+            font=get_mac_font(size=11, weight="bold"),
+            command=self._trigger_optimize_now
+        )
+        self.optimize_btn.pack(side="left", padx=4)
+
         self.add_app_btn = ctk.CTkButton(
             btn_container,
             text="＋ 追加",
             width=80,
             height=34,
+            corner_radius=8,
             fg_color="#2b7a4b",
             hover_color="#1e5835",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=get_mac_font(size=12, weight="bold"),
             command=self._open_add_dialog
         )
         self.add_app_btn.pack(side="left", padx=4)
@@ -102,8 +126,10 @@ class ModernLauncherApp(ctk.CTk):
             text="📁 フォルダ管理",
             width=110,
             height=34,
+            corner_radius=8,
             fg_color="#1f538d",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            hover_color="#163e69",
+            font=get_mac_font(size=12, weight="bold"),
             command=self._open_folder_manager
         )
         self.folder_btn.pack(side="left", padx=4)
@@ -113,9 +139,10 @@ class ModernLauncherApp(ctk.CTk):
             text="🌓",
             width=38,
             height=34,
+            corner_radius=8,
             fg_color="gray30",
             hover_color="gray40",
-            font=ctk.CTkFont(size=14),
+            font=get_mac_font(size=13),
             command=self._toggle_theme
         )
         self.theme_btn.pack(side="left", padx=4)
@@ -127,7 +154,7 @@ class ModernLauncherApp(ctk.CTk):
         self._refresh_category_bar()
 
         # 3. メイングリッドエリア（スクロール可能）
-        self.scroll_canvas = ctk.CTkScrollableFrame(self, corner_radius=10, fg_color="transparent")
+        self.scroll_canvas = ctk.CTkScrollableFrame(self, corner_radius=12, fg_color="transparent")
         self.scroll_canvas.pack(fill="both", expand=True, padx=15, pady=10)
 
         # 4. 最下部ステータスバー
@@ -137,7 +164,7 @@ class ModernLauncherApp(ctk.CTk):
         self.status_lbl = ctk.CTkLabel(
             self.footer_bar,
             text="準備完了",
-            font=ctk.CTkFont(size=11),
+            font=get_mac_font(size=11),
             text_color="gray60"
         )
         self.status_lbl.pack(side="left", padx=15)
@@ -145,7 +172,7 @@ class ModernLauncherApp(ctk.CTk):
         self.dnd_lbl = ctk.CTkLabel(
             self.footer_bar,
             text="※ exeやフォルダをウィンドウにドラッグ＆ドロップして即登録できます",
-            font=ctk.CTkFont(size=11),
+            font=get_mac_font(size=11),
             text_color="gray50"
         )
         self.dnd_lbl.pack(side="right", padx=15)
@@ -164,22 +191,17 @@ class ModernLauncherApp(ctk.CTk):
             return
 
         for raw_p in file_paths:
-            # windndの返り値はバイト列または文字列
             path_str = raw_p.decode("utf-8", errors="ignore") if isinstance(raw_p, bytes) else str(raw_p)
             p = Path(path_str)
 
             if p.is_dir():
-                # フォルダがドロップされた場合はそのフォルダ配下のメインexeを検出
-                main_exe = FolderScanner.find_main_exe_in_folder(str(p))
-                if main_exe:
-                    game_data = {
-                        "name": p.name,
-                        "path": main_exe,
-                        "work_dir": os.path.dirname(main_exe),
-                        "folder_path": str(p),
-                        "category": self.current_category if self.current_category != "すべて" else "ゲーム"
-                    }
-                    self._open_edit_dialog_for_new(game_data)
+                # フォルダ内のexeを全探索
+                found = FolderScanner.scan_library_folder(str(p), default_category="ゲーム")
+                if found:
+                    for item in found:
+                        self.config_mgr.add_or_update_game(item)
+                    self.refresh_games()
+                    messagebox.showinfo("登録完了", f"フォルダから {len(found)} 件のゲームを登録しました！")
                     break
                 else:
                     messagebox.showinfo("通知", f"フォルダ「{p.name}」内に実行可能ファイルが見つかりませんでした。")
@@ -214,11 +236,11 @@ class ModernLauncherApp(ctk.CTk):
                 text=cat,
                 width=80,
                 height=30,
-                corner_radius=6,
+                corner_radius=8,
                 fg_color="#1f538d" if is_active else ("gray80", "gray22"),
                 hover_color="#163e69" if is_active else ("gray70", "gray30"),
                 text_color="white" if is_active else ("gray10", "gray80"),
-                font=ctk.CTkFont(size=12, weight="bold" if is_active else "normal"),
+                font=get_mac_font(size=12, weight="bold" if is_active else "normal"),
                 command=lambda c=cat: self._select_category(c)
             )
             btn.pack(side="left", padx=4, pady=6)
@@ -236,12 +258,12 @@ class ModernLauncherApp(ctk.CTk):
         self.config_mgr.save()
 
     def _initial_check_and_load(self):
-        """初回ロード：登録ゲームが0件かつスキャンフォルダが存在する場合、自動スキャンを提案・実行"""
+        """初回ロード：登録ゲームが0件かつスキャンフォルダが存在する場合、自動スキャンを実行"""
         if len(self.config_mgr.games) == 0 and len(self.config_mgr.scan_folders) > 0:
             msg = (
                 "ライブラリフォルダが見つかりました：\n"
                 + "\n".join([f" - {f}" for f in self.config_mgr.scan_folders])
-                + "\n\nこれらのフォルダ内のゲームを自動スキャンしてランチャーに登録しますか？"
+                + "\n\nこれらのフォルダ内の全ゲームを自動スキャンして登録しますか？"
             )
             if messagebox.askyesno("初回自動スキャン", msg):
                 self._run_background_scan(self.config_mgr.scan_folders)
@@ -250,12 +272,12 @@ class ModernLauncherApp(ctk.CTk):
         self.refresh_games()
 
     def _run_background_scan(self, folders: List[str]):
-        self.status_lbl.configure(text="ゲームを自動スキャン中...", text_color="#3a86ff")
+        self.status_lbl.configure(text="ゲームを全探索スキャン中...", text_color="#3a86ff")
 
         def worker():
             new_count = 0
             for folder in folders:
-                cat_name = os.path.basename(os.path.normpath(folder))
+                cat_name = "ゲーム" if "ゲーム" in folder else "download"
                 detected = FolderScanner.scan_library_folder(folder, default_category=cat_name)
                 for item in detected:
                     existing = self.config_mgr.get_game_by_path(item["path"])
@@ -277,10 +299,10 @@ class ModernLauncherApp(ctk.CTk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_background_scan_done(self, new_count: int):
-        self.status_lbl.configure(text=f"自動スキャン完了: {new_count} 件登録しました", text_color="#2b7a4b")
-        # カテゴリバーも更新（フォルダ名がカテゴリになっているため）
+        self.status_lbl.configure(text=f"自動スキャン完了: {len(self.config_mgr.games)} 件登録中", text_color="#2b7a4b")
         for f in self.config_mgr.scan_folders:
-            self.config_mgr.add_category(os.path.basename(os.path.normpath(f)))
+            cat_name = "ゲーム" if "ゲーム" in f else "download"
+            self.config_mgr.add_category(cat_name)
         self._refresh_category_bar()
         self.refresh_games()
 
@@ -289,7 +311,6 @@ class ModernLauncherApp(ctk.CTk):
         self.refresh_games()
 
     def _on_search_enter(self, event=None):
-        """Enterキーで現在表示されている一番最初のゲームを即起動"""
         filtered = self._get_filtered_games()
         if filtered:
             first_game = filtered[0]
@@ -300,12 +321,10 @@ class ModernLauncherApp(ctk.CTk):
         filtered = []
 
         for g in all_games:
-            # カテゴリフィルタ
             if self.current_category != "すべて":
                 if g.get("category") != self.current_category:
                     continue
 
-            # 検索クエリフィルタ
             if self.search_query:
                 name = g.get("name", "").lower()
                 path = g.get("path", "").lower()
@@ -323,6 +342,7 @@ class ModernLauncherApp(ctk.CTk):
             w.destroy()
 
         self.card_images.clear()
+        self.card_widgets.clear()
         filtered = self._get_filtered_games()
 
         # 同一ゲームグループの解析
@@ -336,18 +356,17 @@ class ModernLauncherApp(ctk.CTk):
             ctk.CTkLabel(
                 empty_box,
                 text="一致するゲームがありません",
-                font=ctk.CTkFont(size=16, weight="bold"),
+                font=get_mac_font(size=16, weight="bold"),
                 text_color="gray60"
             ).pack()
             ctk.CTkLabel(
                 empty_box,
                 text="「＋ 追加」または「フォルダ管理」からゲームを追加してください。",
-                font=ctk.CTkFont(size=12),
+                font=get_mac_font(size=12),
                 text_color="gray50"
             ).pack(pady=5)
             return
 
-        # グリッド配置（ウィンドウ幅に応じて自動計算、カード幅約180px）
         cols = 5
         for idx, game in enumerate(filtered):
             row = idx // cols
@@ -355,8 +374,9 @@ class ModernLauncherApp(ctk.CTk):
             self._create_game_tile(self.scroll_canvas, game, row, col)
 
     def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
-        """タイル/カード型ウィジェットを生成"""
-        card = ctk.CTkFrame(parent, corner_radius=12, fg_color=("gray85", "gray20"), width=180, height=210)
+        """Macスタイルの洗練されたカードウィジェットを生成"""
+        game_id = game.get("id")
+        card = ctk.CTkFrame(parent, corner_radius=14, fg_color=("gray85", "gray18"), width=186, height=220)
         card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
         card.grid_propagate(False)
 
@@ -368,48 +388,37 @@ class ModernLauncherApp(ctk.CTk):
                     group_key = k
                 break
 
-        # アイコン取得（元画像優先 -> DLsite公式サムネイル -> Web -> exe -> フォールバック）
-        icon_path = game.get("icon_path")
-        exe_path = game.get("path", "")
-        name = game.get("name", "Game")
-        local_ill = game.get("local_illustration")
-        rj_code = game.get("rj_code")
-
-        resolved_icon = self.icon_helper.get_or_create_icon(
-            exe_path,
-            name,
-            preferred_icon_path=icon_path,
-            local_illustration=local_ill,
-            rj_code=rj_code,
-            allow_web_search=True
-        )
-        # 設定に書き戻し（永続化）
-        if resolved_icon != icon_path:
+        # サムネイル解決（元画像優先 -> DLsite -> キャッシュ -> Web -> exe）
+        resolved_icon = game.get("icon_path")
+        if not resolved_icon or not os.path.exists(resolved_icon):
+            resolved_icon, quality = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
             game["icon_path"] = resolved_icon
+            game["icon_quality"] = quality
             self.config_mgr.save()
 
         # PIL画像からCTkImage生成
         try:
             pil_img = Image.open(resolved_icon).convert("RGBA")
-            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(100, 100))
-            self.card_images[game["id"]] = ctk_img
+            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(108, 108))
+            self.card_images[game_id] = ctk_img
         except Exception:
             ctk_img = None
 
-        # アイコンボタン（クリックで即起動）
+        # アイコンボタン
         icon_btn = ctk.CTkButton(
             card,
             image=ctk_img,
             text="",
-            width=110,
-            height=110,
+            width=116,
+            height=116,
+            corner_radius=10,
             fg_color="transparent",
-            hover_color=("gray75", "gray30"),
+            hover_color=("gray75", "gray28"),
             command=lambda g=game: self._launch_game(g)
         )
-        icon_btn.pack(pady=(12, 4))
+        icon_btn.pack(pady=(10, 4))
 
-        # 重複バッジ（重複がある場合）
+        # 重複バッジ
         if group_key:
             dup_count = len(self.grouped_games[group_key])
             dup_btn = ctk.CTkButton(
@@ -417,19 +426,21 @@ class ModernLauncherApp(ctk.CTk):
                 text=f"🔁 重複 {dup_count}件 比較",
                 width=120,
                 height=20,
+                corner_radius=6,
                 fg_color="#b8860b",
                 hover_color="#8c6609",
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=get_mac_font(size=10, weight="bold"),
                 command=lambda k=group_key: self._open_comparison_dialog(k)
             )
             dup_btn.pack(pady=(0, 4))
 
-        # ゲームタイトル表示
+        # ゲームタイトル表示（Macフォント）
+        name = game.get("name", "Game")
         name_lbl = ctk.CTkLabel(
             card,
             text=name,
-            font=ctk.CTkFont(size=12, weight="bold"),
-            wraplength=160,
+            font=get_mac_font(size=12, weight="bold"),
+            wraplength=166,
             cursor="hand2"
         )
         name_lbl.pack(padx=8, pady=(0, 6))
@@ -439,13 +450,58 @@ class ModernLauncherApp(ctk.CTk):
         for w in [card, icon_btn, name_lbl]:
             w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
 
+        self.card_widgets[game_id] = {
+            "card": card,
+            "icon_btn": icon_btn,
+            "game": game
+        }
+
+    def _on_game_icon_improved(self, updated_game: Dict[str, Any]):
+        """バックグラウンドオプティマイザーでより最適な画像が見つかった時のリアルタイム更新"""
+        self.after(0, lambda: self._apply_improved_icon(updated_game))
+
+    def _apply_improved_icon(self, updated_game: Dict[str, Any]):
+        game_id = updated_game.get("id")
+        self.config_mgr.save()
+
+        # 表示中のカードがあれば画像を差し替え
+        if game_id in self.card_widgets:
+            new_path = updated_game.get("icon_path")
+            if new_path and os.path.exists(new_path):
+                try:
+                    pil_img = Image.open(new_path).convert("RGBA")
+                    ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(108, 108))
+                    self.card_images[game_id] = ctk_img
+                    self.card_widgets[game_id]["icon_btn"].configure(image=ctk_img)
+                    self.status_lbl.configure(text=f"✨ サムネイルを最適化しました: {updated_game.get('name')}", text_color="#4361ee")
+                except Exception:
+                    pass
+
+    def _trigger_optimize_now(self):
+        """手動で全サムネイルの最適化探索をリフレッシュ"""
+        self.status_lbl.configure(text="✨ 最適なサムネイルをバックグラウンド探索中...", text_color="#4361ee")
+        # 未達成ゲームの探索を即時リスタート
+        threading.Thread(target=self._optimize_all_worker, daemon=True).start()
+
+    def _optimize_all_worker(self):
+        improved_count = 0
+        for game in self.config_mgr.games:
+            cur_q = game.get("icon_quality", 0)
+            if cur_q < QUALITY_DLSITE_OFFICIAL:
+                new_path, new_q = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
+                if new_q > cur_q:
+                    game["icon_path"] = new_path
+                    game["icon_quality"] = new_q
+                    improved_count += 1
+                    self.after(0, lambda g=game: self._apply_improved_icon(g))
+        self.after(0, lambda: self.status_lbl.configure(text=f"✨ 最適化完了: {improved_count} 件のサムネイルを更新しました", text_color="#2b7a4b"))
+
     def _show_context_menu(self, event, game: Dict[str, Any]):
-        """右クリックコンテキストメニュー"""
-        menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label="▶ 起動する", font=("Meiryo", 10, "bold"), command=lambda: self._launch_game(game))
+        """右クリックコンテキストメニュー（Macフォント適用）"""
+        menu = tk.Menu(self, tearoff=0, font=(get_mac_font_family(), 10))
+        menu.add_command(label="▶ 起動する", command=lambda: self._launch_game(game))
         menu.add_separator()
 
-        # 重複比較
         group_key = None
         for k, g_list in self.grouped_games.items():
             if any(item.get("id") == game.get("id") for item in g_list) and len(g_list) > 1:
@@ -455,6 +511,7 @@ class ModernLauncherApp(ctk.CTk):
             menu.add_command(label=f"🔁 重複・進行度を比較 ({len(self.grouped_games[group_key])}件)", command=lambda: self._open_comparison_dialog(group_key))
             menu.add_separator()
 
+        menu.add_command(label="✨ 最適なサムネイルを再検索", command=lambda: self._re_optimize_single_game(game))
         menu.add_command(label="🔍 Webから画像を探す", command=lambda: self._open_icon_picker(game))
         menu.add_command(label="📂 ファイルの場所を開く", command=lambda: self._open_game_folder(game))
         menu.add_command(label="✏️ 情報を編集", command=lambda: self._open_edit_dialog(game))
@@ -462,6 +519,16 @@ class ModernLauncherApp(ctk.CTk):
         menu.add_command(label="🗑️ ランチャーから削除", command=lambda: self._remove_game(game))
 
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _re_optimize_single_game(self, game: Dict[str, Any]):
+        """単体ゲームのサムネイル最適化を再試行"""
+        self.status_lbl.configure(text=f"🔍 「{game.get('name')}」の最適サムネイルを探索中...", text_color="#4361ee")
+        def worker():
+            new_path, new_q = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
+            game["icon_path"] = new_path
+            game["icon_quality"] = new_q
+            self.after(0, lambda: self._apply_improved_icon(game))
+        threading.Thread(target=worker, daemon=True).start()
 
     def _launch_game(self, game: Dict[str, Any]):
         exe_path = game.get("path", "")
@@ -498,6 +565,7 @@ class ModernLauncherApp(ctk.CTk):
     def _open_icon_picker(self, game: Dict[str, Any]):
         def on_selected(new_icon_path):
             game["icon_path"] = new_icon_path
+            game["icon_quality"] = QUALITY_LOCAL_ORIGINAL
             self.config_mgr.save()
             self.refresh_games()
 

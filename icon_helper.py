@@ -1,33 +1,87 @@
 import os
 import sys
+import time
 import hashlib
 import urllib.request
 import urllib.parse
 import re
 import ctypes
+import threading
 from ctypes import wintypes, c_void_p, c_int, c_uint, byref, sizeof
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Callable
 from PIL import Image, ImageDraw, ImageFont
 
 CACHE_DIR = Path("cache/icons")
 
+# サムネイルの品質レベル定義
+QUALITY_NONE = 0
+QUALITY_FALLBACK = 1       # 頭文字アイコン
+QUALITY_EXE_ICON = 2       # exeから抽出したアイコン
+QUALITY_BING_GENERIC = 3   # 一般Web検索
+QUALITY_DLSITE_OFFICIAL = 4 # DLsite公式ジャケット
+QUALITY_LOCAL_ORIGINAL = 5  # ローカルの元イラスト・ジャケット画像
+
+def generate_query_candidates(name: str, path: str = "", folder_path: str = "") -> List[str]:
+    """作品名、パス、フォルダ名から検索クエリのバリエーションを生成"""
+    candidates = []
+    
+    # 1. RJ/VJ番号
+    combined = f"{name} {path} {folder_path}"
+    m_rj = re.findall(r'\b(RJ|VJ)\d{6,8}\b', combined, re.IGNORECASE)
+    for rj in m_rj:
+        if rj.upper() not in candidates:
+            candidates.append(rj.upper())
+
+    # 2. サークル名や角括弧・丸括弧を除去したクリーンタイトル
+    clean1 = re.sub(r'\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）', '', name)
+    clean1 = re.sub(r'[-_ ]*(v|ver|version)?[._ ]*\d+(\.\d+)+.*', '', clean1, flags=re.IGNORECASE).strip()
+    if clean1 and clean1 not in candidates:
+        candidates.append(clean1)
+
+    # 3. サブタイトル（〜、～、-）の分離
+    for sep in ['〜', '～', ' - ', '-']:
+        if sep in clean1:
+            part = clean1.split(sep)[0].strip()
+            if part and len(part) >= 2 and part not in candidates:
+                candidates.append(part)
+
+    # 4. 元の名前そのまま
+    if name not in candidates:
+        candidates.append(name)
+
+    # 5. フォルダ名（親フォルダ名）
+    if folder_path:
+        f_name = Path(folder_path).name
+        clean_f = re.sub(r'\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）', '', f_name)
+        clean_f = re.sub(r'[-_ ]*(v|ver|version)?[._ ]*\d+(\.\d+)+.*', '', clean_f, flags=re.IGNORECASE).strip()
+        if clean_f and clean_f not in candidates:
+            candidates.append(clean_f)
+
+    # 6. exeのファイル名本体
+    if path:
+        stem = Path(path).stem
+        if stem.lower() not in ["game", "start", "main", "play", "app", "launch"]:
+            if stem not in candidates:
+                candidates.append(stem)
+
+    return candidates
+
 class IconHelper:
-    """元画像の優先利用、DLsiteからの公式サムネイル取得、exeアイコン抽出、キャッシュ管理"""
+    """元画像の優先利用、DLsite公式サムネイル取得、exeアイコン抽出、品質管理"""
 
     def __init__(self, cache_dir: Path = CACHE_DIR):
         self.cache_dir = Path(cache_dir).resolve()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Cookie": "adultchecked=1" # DLsite年齢確認用
+            "Cookie": "adultchecked=1" # DLsite年齢確認
         }
 
     def _get_cache_path(self, key: str) -> Path:
         hash_val = hashlib.md5(key.encode("utf-8")).hexdigest()
         return self.cache_dir / f"{hash_val}.png"
 
-    # --- DLsite サムネイル取得 ---
     def fetch_dlsite_thumbnail_by_rj(self, rj_code: str) -> Optional[str]:
         """RJ番号/VJ番号をもとにDLsite作品ページから公式ジャケット画像URLを取得"""
         rj = rj_code.upper().strip()
@@ -36,17 +90,16 @@ class IconHelper:
             f"https://www.dlsite.com/books/work/=/product_id/{rj}.html",
             f"https://www.dlsite.com/pro/work/=/product_id/{rj}.html",
             f"https://www.dlsite.com/home/work/=/product_id/{rj}.html",
+            f"https://www.dlsite.com/girls/work/=/product_id/{rj}.html",
         ]
         for page_url in pages:
             try:
                 req = urllib.request.Request(page_url, headers=self.headers)
-                with urllib.request.urlopen(req, timeout=5) as res:
+                with urllib.request.urlopen(req, timeout=4) as res:
                     html = res.read().decode("utf-8", errors="ignore")
-                    # og:image タグ
                     m = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html)
                     if m:
                         return m.group(1)
-                    # _img_main.jpg
                     m2 = re.search(r'//img\.dlsite\.jp/[^"\']+_img_main\.(?:jpg|png)', html)
                     if m2:
                         return "https:" + m2.group(0)
@@ -54,20 +107,15 @@ class IconHelper:
                 pass
         return None
 
-    def search_dlsite_thumbnail_by_title(self, title: str) -> Optional[str]:
-        """作品名でDLsite内検索を行い、一致した作品のジャケット画像URLを取得"""
-        # バージョンや記号、かっこを除去して作品名本体を抽出
-        clean = re.sub(r'[-_ ]*(v|ver|version)?[._ ]*\d+(\.\d+)+.*', '', title, flags=re.IGNORECASE)
-        clean = re.sub(r'【[^】]*】|\[[^\]]*\]|\([^)]*\)', '', clean).strip()
-        if not clean:
-            clean = title.strip()
-
-        search_url = f"https://www.dlsite.com/maniax/fsr/=/keyword/{urllib.parse.quote(clean)}"
+    def search_dlsite_thumbnail_by_query(self, query: str) -> Optional[str]:
+        """作品名等のクエリでDLsite内検索を行い、公式ジャケット画像URLを取得"""
+        if not query or len(query.strip()) < 2:
+            return None
+        search_url = f"https://www.dlsite.com/maniax/fsr/=/keyword/{urllib.parse.quote(query.strip())}"
         try:
             req = urllib.request.Request(search_url, headers=self.headers)
-            with urllib.request.urlopen(req, timeout=6) as res:
+            with urllib.request.urlopen(req, timeout=5) as res:
                 html = res.read().decode("utf-8", errors="ignore")
-                # 検索結果一覧のメイン画像
                 matches = re.findall(r'//img\.dlsite\.jp/[^"\']+_img_main\.(?:jpg|png)', html)
                 if matches:
                     return "https:" + matches[0]
@@ -75,23 +123,19 @@ class IconHelper:
                 for m in matches2:
                     if "work" in m:
                         return "https:" + m
-        except Exception as e:
-            print(f"[IconHelper] DLsite検索エラー ({clean}): {e}")
+        except Exception:
+            pass
         return None
 
-    def search_web_icons(self, query: str, max_results: int = 8) -> List[str]:
-        """Bing画像検索を用いて、ゲーム/アプリのカバー・ロゴ候補URLを取得"""
+    def search_web_icons(self, query: str, max_results: int = 6) -> List[str]:
+        """Bing画像検索を用いて候補画像URLを取得"""
         clean_query = query.strip()
-        if re.search(r'(RJ|VJ)\d+', clean_query, re.IGNORECASE):
-            search_term = f"{clean_query} DLsite"
-        else:
-            search_term = f"{clean_query} game logo icon"
-
+        search_term = f"{clean_query} game logo icon"
         bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(search_term)}&form=HDRSC2&first=1"
         req = urllib.request.Request(bing_url, headers=self.headers)
         results = []
         try:
-            with urllib.request.urlopen(req, timeout=6) as res:
+            with urllib.request.urlopen(req, timeout=5) as res:
                 html = res.read().decode("utf-8", errors="ignore")
                 matches = re.findall(r'murl&quot;:&quot;(http[^&]+)&quot;', html)
                 if not matches:
@@ -101,15 +145,15 @@ class IconHelper:
                         results.append(m)
                     if len(results) >= max_results:
                         break
-        except Exception as e:
-            print(f"[IconHelper] Web画像検索エラー ({query}): {e}")
+        except Exception:
+            pass
         return results
 
     def download_image(self, url: str, target_size: Tuple[int, int] = (140, 140)) -> Optional[Image.Image]:
-        """指定したURLから画像をダウンロードして正方形のPIL Imageとして整形"""
+        """URLから画像をダウンロードして正方形のPIL Imageとして整形"""
         try:
             req = urllib.request.Request(url, headers=self.headers)
-            with urllib.request.urlopen(req, timeout=6) as res:
+            with urllib.request.urlopen(req, timeout=5) as res:
                 img_data = res.read()
             import io
             img = Image.open(io.BytesIO(img_data)).convert("RGBA")
@@ -119,22 +163,20 @@ class IconHelper:
             offset_y = (target_size[1] - img.height) // 2
             final_img.paste(img, (offset_x, offset_y), img)
             return final_img
-        except Exception as e:
-            print(f"[IconHelper] 画像ダウンロード失敗 ({url}): {e}")
+        except Exception:
             return None
 
     def cache_image(self, key: str, image: Image.Image) -> str:
-        """画像をキャッシュディレクトリにPNG形式で保存し、絶対パスを返す"""
+        """画像をキャッシュディレクトリにPNG形式で保存し、パスを返す"""
         cache_path = self._get_cache_path(key)
         try:
             image.save(cache_path, "PNG")
             return str(cache_path)
-        except Exception as e:
-            print(f"[IconHelper] キャッシュ保存失敗: {e}")
+        except Exception:
             return ""
 
     def process_local_image(self, local_path: str, target_size: Tuple[int, int] = (140, 140)) -> Optional[str]:
-        """ローカルの元画像（イラスト）を正方形サムネイルに整形してキャッシュに保存"""
+        """ローカル画像（イラスト）を正方形サムネイルに整形してキャッシュに保存"""
         if not local_path or not os.path.exists(local_path):
             return None
         try:
@@ -145,8 +187,7 @@ class IconHelper:
             offset_y = (target_size[1] - img.height) // 2
             final_img.paste(img, (offset_x, offset_y), img)
             return self.cache_image(f"local_{local_path}", final_img)
-        except Exception as e:
-            print(f"[IconHelper] ローカル画像整形エラー: {e}")
+        except Exception:
             return local_path
 
     def extract_icon_from_exe(self, exe_path: str, target_size: Tuple[int, int] = (140, 140)) -> Optional[Image.Image]:
@@ -273,7 +314,7 @@ class IconHelper:
         b = (hash_code & 0x0000FF)
         color = ((r % 160) + 50, (g % 160) + 50, (b % 160) + 50, 255)
 
-        draw.rounded_rectangle([4, 4, size[0] - 4, size[1] - 4], radius=20, fill=color)
+        draw.rounded_rectangle([4, 4, size[0] - 4, size[1] - 4], radius=24, fill=color)
 
         char = (name[0] if name else "?").upper()
         try:
@@ -293,69 +334,137 @@ class IconHelper:
 
         return img
 
-    def get_or_create_icon(
+    def resolve_best_thumbnail(
         self,
-        exe_path: str,
-        app_name: str,
-        preferred_icon_path: Optional[str] = None,
-        local_illustration: Optional[str] = None,
-        rj_code: Optional[str] = None,
+        game_data: Dict[str, Any],
         allow_web_search: bool = True
-    ) -> str:
+    ) -> Tuple[str, int]:
         """
-        アイコン・サムネイルを解決する。
-        【優先度ルール】:
-        1. ユーザーが手動指定したアイコン (preferred_icon_path)
-        2. ゲームフォルダ内に元からあるイラスト・ジャケット画像 (local_illustration)
-        3. キャッシュ画像 (既存)
-        4. DLsiteから作品名/RJ番号で確認して公式サムネイルを取得
-        5. Bing画像検索
-        6. exe内蔵アイコン
-        7. フォールバックアイコン
+        指定されたゲームの最も最適なサムネイルと、その品質スコアを返す。
+        戻り値: (icon_path, quality_score)
         """
+        exe_path = game_data.get("path", "")
+        name = game_data.get("name", "")
+        folder_path = game_data.get("folder_path", "")
+        preferred_icon_path = game_data.get("icon_path")
+        local_ill = game_data.get("local_illustration")
+        rj_code = game_data.get("rj_code")
+
         # 1. ユーザー手動指定
-        if preferred_icon_path and os.path.exists(preferred_icon_path):
-            return preferred_icon_path
+        if preferred_icon_path and os.path.exists(preferred_icon_path) and "cache" not in preferred_icon_path:
+            return preferred_icon_path, QUALITY_LOCAL_ORIGINAL
 
-        # 2. 元からあるイラスト画像（ユーザーの最重要指示：ちゃんとイラストがある場合はDLsite検索せず元の画像を使う）
-        if local_illustration and os.path.exists(local_illustration):
-            cached_local = self.process_local_image(local_illustration)
+        # 2. ローカルの元イラスト・ジャケット画像（最優先）
+        if local_ill and os.path.exists(local_ill):
+            cached_local = self.process_local_image(local_ill)
             if cached_local:
-                return cached_local
+                return cached_local, QUALITY_LOCAL_ORIGINAL
 
-        # 3. キャッシュ確認
-        cache_path = self._get_cache_path(f"{app_name}_{exe_path}")
-        if cache_path.exists():
-            return str(cache_path)
+        # 3. キャッシュ確認（既存品質が記録されていればそれを使用）
+        cache_path = self._get_cache_path(f"{name}_{exe_path}")
+        existing_quality = game_data.get("icon_quality", QUALITY_NONE)
+        if cache_path.exists() and existing_quality >= QUALITY_DLSITE_OFFICIAL:
+            return str(cache_path), existing_quality
 
-        # 4. DLsiteから公式サムネイルを取得
+        # 4. DLsite公式サムネイル探索（クエリバリエーションを網羅）
         if allow_web_search:
-            dlsite_img_url = None
-            if rj_code:
-                dlsite_img_url = self.fetch_dlsite_thumbnail_by_rj(rj_code)
-            if not dlsite_img_url:
-                dlsite_img_url = self.search_dlsite_thumbnail_by_title(app_name)
+            queries = generate_query_candidates(name, exe_path, folder_path)
+            for q in queries:
+                dlsite_img_url = None
+                if re.match(r'^(RJ|VJ)\d+$', q, re.IGNORECASE):
+                    dlsite_img_url = self.fetch_dlsite_thumbnail_by_rj(q)
+                else:
+                    dlsite_img_url = self.search_dlsite_thumbnail_by_query(q)
 
-            if dlsite_img_url:
-                img = self.download_image(dlsite_img_url)
-                if img:
-                    return self.cache_image(f"{app_name}_{exe_path}", img)
+                if dlsite_img_url:
+                    img = self.download_image(dlsite_img_url)
+                    if img:
+                        saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                        return saved_path, QUALITY_DLSITE_OFFICIAL
 
             # 5. DLsiteになければBing画像検索
             try:
-                urls = self.search_web_icons(app_name, max_results=1)
+                clean_name = queries[1] if len(queries) > 1 else name
+                urls = self.search_web_icons(clean_name, max_results=1)
                 if urls:
                     img = self.download_image(urls[0])
                     if img:
-                        return self.cache_image(f"{app_name}_{exe_path}", img)
+                        saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                        return saved_path, QUALITY_BING_GENERIC
             except Exception:
                 pass
 
-        # 6. exeからアイコン抽出
+        # 6. exe内蔵アイコン
         exe_icon = self.extract_icon_from_exe(exe_path)
         if exe_icon:
-            return self.cache_image(f"{app_name}_{exe_path}", exe_icon)
+            saved_path = self.cache_image(f"{name}_{exe_path}", exe_icon)
+            return saved_path, QUALITY_EXE_ICON
 
         # 7. フォールバック
-        fallback = self.create_fallback_icon(app_name)
-        return self.cache_image(f"{app_name}_{exe_path}", fallback)
+        fallback = self.create_fallback_icon(name)
+        saved_path = self.cache_image(f"{name}_{exe_path}", fallback)
+        return saved_path, QUALITY_FALLBACK
+
+
+class ContinuousIconOptimizer:
+    """
+    バックグラウンドで常駐し、サムネイルが最高品質（DLsite公式またはローカル元イラスト）
+    に達していないゲームを常に最適解を探し続けて自動アップグレードするワーカー
+    """
+
+    def __init__(self, icon_helper: IconHelper, get_games_fn: Callable[[], List[Dict[str, Any]]], on_updated_callback: Callable[[Dict[str, Any]], None]):
+        self.icon_helper = icon_helper
+        self.get_games_fn = get_games_fn
+        self.on_updated_callback = on_updated_callback
+        self.running = False
+        self.thread = None
+
+    def start(self):
+        if self.running:
+            return
+        self.running = True
+        self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+
+    def _worker_loop(self):
+        """常にバックグラウンドで最適サムネイルを探し続けるループ"""
+        time.sleep(1.0) # 起動直後の負荷分散
+        while self.running:
+            try:
+                games = self.get_games_fn()
+                # 最高品質に達していないゲームを抽出
+                candidates = [
+                    g for g in games
+                    if g.get("icon_quality", QUALITY_NONE) < QUALITY_DLSITE_OFFICIAL
+                ]
+
+                if not candidates:
+                    # すべて最高品質なら、定期的に（60秒間隔）待機して次の追加に備える
+                    time.sleep(60)
+                    continue
+
+                for game in candidates:
+                    if not self.running:
+                        break
+
+                    cur_quality = game.get("icon_quality", QUALITY_NONE)
+                    new_path, new_quality = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
+
+                    # より高品質なサムネイルが見つかった場合、アップデート！
+                    if new_quality > cur_quality and new_path:
+                        game["icon_path"] = new_path
+                        game["icon_quality"] = new_quality
+                        self.on_updated_callback(game)
+
+                    # サーバ負荷軽減のため少し待機
+                    time.sleep(1.5)
+
+            except Exception as e:
+                print(f"[ContinuousIconOptimizer] エラー: {e}")
+                time.sleep(10)
+
+            # 1周完了したら30秒待機して再チェック
+            time.sleep(30)
