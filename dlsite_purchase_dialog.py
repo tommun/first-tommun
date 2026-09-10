@@ -6,9 +6,10 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from font_manager import get_mac_font
 from dlsite_purchase_importer import DLsitePurchaseImporter
+from fanza_metadata import FANZAPurchaseImporter, FANZAMetadataFetcher
 
 class DLsitePurchaseDialog(ctk.CTkToplevel):
-    """DLsiteの購入履歴（直接ログイン自動スクレイピング・HTML・RJ番号一覧）を取り込むダイアログ"""
+    """DLsite & FANZA の購入履歴・所持作品の取り込み＆同期ダイアログ"""
 
     def __init__(self, master, config_mgr, icon_helper, on_complete):
         super().__init__(master)
@@ -16,9 +17,9 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         self.icon_helper = icon_helper
         self.on_complete = on_complete
 
-        self.title("📥 DLsite購入履歴の自動同期・取り込み")
-        self.geometry("660x640")
-        self.minsize(620, 560)
+        self.title("📥 購入作品・ライブラリの自動同期・取り込み")
+        self.geometry("680x670")
+        self.minsize(640, 580)
         self.configure(fg_color="#09071a")
 
         self.grab_set()
@@ -39,15 +40,15 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         # タイトル
         ctk.CTkLabel(
             container,
-            text="📥 DLsite購入作品の自動スクレイピング・取り込み",
-            font=get_mac_font(size=17, weight="bold"),
+            text="📥 DLsite / FANZA 購入作品の同期・サムネイル更新",
+            font=get_mac_font(size=16, weight="bold"),
             text_color="#ffffff"
         ).pack(anchor="w", padx=16, pady=(16, 4))
 
         # 説明文
         desc = (
-            "DLsiteアカウントで直接ログインして購入済み作品を全自動で取得・同期します。\n"
-            "※ パスワード等は保存されず、購入履歴の取得通信のみに使用されます。"
+            "DLsiteやFANZAの購入作品を同期し、公式商品ページの画像（ジャケット）や\n"
+            "ジャンル・タグ情報を自動適用します。未インストール作品も登録・管理できます。"
         )
         ctk.CTkLabel(
             container,
@@ -57,8 +58,8 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             justify="left"
         ).pack(anchor="w", padx=16, pady=(0, 12))
 
-        # === タブビュー (ログインして自動スクレイピング / HTML・手動入力) ===
-        tabview = ctk.CTkTabview(
+        # === タブビュー ===
+        self.tabview = ctk.CTkTabview(
             container,
             fg_color="#181335",
             segmented_button_fg_color="#100c26",
@@ -67,23 +68,23 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             segmented_button_unselected_color="#181335",
             segmented_button_unselected_hover_color="#231b4d"
         )
-        tabview.pack(fill="both", expand=True, padx=16, pady=(0, 10))
+        self.tabview.pack(fill="both", expand=True, padx=16, pady=(0, 10))
 
-        tab_login = tabview.add("🔑 ログインして全自動取得 (推奨)")
-        tab_manual = tabview.add("📄 HTMLファイル / テキスト貼り付け")
+        tab_dlsite_login = self.tabview.add("🔵 DLsite ログイン自動取得")
+        tab_fanza = self.tabview.add("🟣 FANZA 同期・取り込み")
+        tab_manual = self.tabview.add("📄 HTMLファイル / テキスト貼り付け")
 
-        # --- タブ1: ログイン自動取得 ---
+        # --- タブ1: DLsite ログイン自動取得 ---
         ctk.CTkLabel(
-            tab_login,
-            text="DLsiteのログイン情報を入力して「自動取得を開始」を押してください：",
+            tab_dlsite_login,
+            text="DLsiteのログイン情報を入力して購入履歴を一括スクレイピング：",
             font=get_mac_font(size=11, weight="bold"),
             text_color="#ffffff"
         ).pack(anchor="w", padx=10, pady=(10, 8))
 
-        form_box = ctk.CTkFrame(tab_login, fg_color="transparent")
+        form_box = ctk.CTkFrame(tab_dlsite_login, fg_color="transparent")
         form_box.pack(fill="x", padx=10, pady=(0, 10))
 
-        # ログインID
         ctk.CTkLabel(
             form_box,
             text="ログインID / メールアドレス:",
@@ -104,7 +105,6 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         )
         self.login_id_entry.grid(row=0, column=1, sticky="w", padx=10, pady=4)
 
-        # パスワード
         ctk.CTkLabel(
             form_box,
             text="パスワード:",
@@ -127,26 +127,96 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         self.password_entry.grid(row=1, column=1, sticky="w", padx=10, pady=4)
 
         self.auto_fetch_btn = ctk.CTkButton(
-            tab_login,
-            text="🚀 ログインして購入履歴を自動スクレイピング",
+            tab_dlsite_login,
+            text="🚀 DLsiteにログインして自動スクレイピング・画像同期",
             height=36,
             corner_radius=18,
             fg_color="#ff007a",
             hover_color="#d60066",
             text_color="#ffffff",
             font=get_mac_font(size=12, weight="bold"),
-            command=self._start_auto_login_scraping
+            command=self._start_dlsite_auto_login
         )
         self.auto_fetch_btn.pack(anchor="w", padx=10, pady=(6, 8))
 
-        # --- タブ2: HTML / 手動貼り付け ---
+        ctk.CTkLabel(
+            tab_dlsite_login,
+            text="※ パスワードは保存されず、購入履歴取得の通信のみに安全に使用されます。",
+            font=get_mac_font(size=10),
+            text_color="#737099"
+        ).pack(anchor="w", padx=10)
+
+        # --- タブ2: FANZA 同期・取り込み ---
+        ctk.CTkLabel(
+            tab_fanza,
+            text="FANZAの購入作品を取り込み、公式画像・ジャンル・タグに差し替えます：",
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#ffffff"
+        ).pack(anchor="w", padx=10, pady=(10, 8))
+
+        fanza_row1 = ctk.CTkFrame(tab_fanza, fg_color="transparent")
+        fanza_row1.pack(fill="x", padx=10, pady=(0, 8))
+
+        ctk.CTkButton(
+            fanza_row1,
+            text="🌐 FANZA購入済み一覧を開く (ブラウザ)",
+            width=230,
+            height=30,
+            corner_radius=8,
+            fg_color="#4f1d6b",
+            hover_color="#6e2b94",
+            text_color="#ffffff",
+            font=get_mac_font(size=11, weight="bold"),
+            command=lambda: webbrowser.open("https://www.dmm.co.jp/digital/-/mylibrary/")
+        ).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            fanza_row1,
+            text="📄 FANZA購入HTMLを選択...",
+            width=180,
+            height=30,
+            corner_radius=8,
+            fg_color="#8338ec",
+            hover_color="#6c2bd9",
+            text_color="#ffffff",
+            font=get_mac_font(size=11),
+            command=self._browse_fanza_html
+        ).pack(side="left")
+
+        self.fanza_text_area = ctk.CTkTextbox(
+            tab_fanza,
+            height=90,
+            corner_radius=10,
+            fg_color="#0c0920",
+            border_width=1,
+            border_color="#271f54",
+            text_color="#ffffff",
+            font=get_mac_font(size=11)
+        )
+        self.fanza_text_area.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        self.fanza_text_area.insert("1.0", "ここにFANZAの作品名やCID（例: d_186424、妻獲り迷宮）またはHTMLソースを貼り付けてください")
+
+        self.fanza_sync_btn = ctk.CTkButton(
+            tab_fanza,
+            text="🟣 FANZA作品を同期＆商品画像に差し替え",
+            height=34,
+            corner_radius=17,
+            fg_color="#8338ec",
+            hover_color="#6c2bd9",
+            text_color="#ffffff",
+            font=get_mac_font(size=11, weight="bold"),
+            command=self._start_fanza_sync
+        )
+        self.fanza_sync_btn.pack(anchor="w", padx=10, pady=(0, 8))
+
+        # --- タブ3: HTML / 手動貼り付け (汎用 / DLsite) ---
         row_browse = ctk.CTkFrame(tab_manual, fg_color="transparent")
         row_browse.pack(fill="x", padx=10, pady=(8, 8))
 
         ctk.CTkButton(
             row_browse,
-            text="🌐 ブラウザで購入履歴を開く",
-            width=180,
+            text="🌐 DLsite購入履歴を開く",
+            width=170,
             height=30,
             corner_radius=8,
             fg_color="#2c2266",
@@ -159,14 +229,14 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         ctk.CTkButton(
             row_browse,
             text="📄 保存したHTMLファイルを選択...",
-            width=200,
+            width=190,
             height=30,
             corner_radius=8,
             fg_color="#3a86ff",
             hover_color="#2b68cb",
             text_color="#ffffff",
             font=get_mac_font(size=11),
-            command=self._browse_html_file
+            command=self._browse_dlsite_html
         ).pack(side="left")
 
         self.text_area = ctk.CTkTextbox(
@@ -180,7 +250,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             font=get_mac_font(size=11)
         )
         self.text_area.pack(fill="both", expand=True, padx=10, pady=(0, 6))
-        self.text_area.insert("1.0", "ここにRJ番号（例: RJ01360185）またはHTMLを直接貼り付けも可能です")
+        self.text_area.insert("1.0", "ここにRJ番号（例: RJ01360185）またはHTMLを直接貼り付けてください")
 
         # プログレスバー & ステータス
         self.progress_bar = ctk.CTkProgressBar(container, height=6, corner_radius=3, fg_color="#181335", progress_color="#3a86ff")
@@ -201,14 +271,14 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
 
         self.start_import_btn = ctk.CTkButton(
             btn_box,
-            text="📥 ライブラリ同期を実行",
+            text="📥 DLsite同期を実行",
             height=36,
             corner_radius=18,
             fg_color="#3a86ff",
             hover_color="#2b68cb",
             text_color="#ffffff",
             font=get_mac_font(size=12, weight="bold"),
-            command=self._start_import
+            command=self._start_dlsite_import
         )
         self.start_import_btn.pack(side="right", padx=(8, 0))
 
@@ -225,7 +295,8 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             command=self.destroy
         ).pack(side="right")
 
-    def _start_auto_login_scraping(self):
+    # === DLsite 処理 ===
+    def _start_dlsite_auto_login(self):
         login_id = self.login_id_entry.get().strip()
         password = self.password_entry.get().strip()
 
@@ -260,19 +331,16 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
                     messagebox.showinfo("情報", msg)
                     return
 
-                # RJコードが取得できたら手動エリアにも反映し、同期開始
                 self.text_area.delete("1.0", "end")
                 self.text_area.insert("1.0", "\n".join(rjs))
-                self.status_lbl.configure(text=f"{len(rjs)} 件の作品を検出しました。ライブラリ同期を開始します...", text_color="#3a86ff")
-
-                # 自動でライブラリ同期へ移行
-                self._run_sync_worker(rjs)
+                self.status_lbl.configure(text=f"{len(rjs)} 件の作品を検出しました。画像・メタデータ同期を開始します...", text_color="#3a86ff")
+                self._run_dlsite_sync_worker(rjs)
 
             self.after(0, on_login_done)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _browse_html_file(self):
+    def _browse_dlsite_html(self):
         path = filedialog.askopenfilename(
             parent=self,
             title="DLsite購入履歴のHTMLファイルを選択",
@@ -287,20 +355,20 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             else:
                 messagebox.showwarning("警告", "選択されたファイルからRJコードが見つかりませんでした。")
 
-    def _start_import(self):
+    def _start_dlsite_import(self):
         raw_text = self.text_area.get("1.0", "end").strip()
         rjs = DLsitePurchaseImporter.extract_rj_codes_from_text(raw_text)
 
         if not rjs:
-            messagebox.showwarning("入力不足", "有効なRJ番号が見つかりませんでした。「ログインして全自動取得」を行うか、RJコードを入力してください。")
+            messagebox.showwarning("入力不足", "有効なRJ番号が見つかりませんでした。「DLsite ログイン自動取得」を行うか、RJコードを入力してください。")
             return
 
-        self._run_sync_worker(rjs)
+        self._run_dlsite_sync_worker(rjs)
 
-    def _run_sync_worker(self, rjs):
+    def _run_dlsite_sync_worker(self, rjs):
         self.start_import_btn.configure(state="disabled")
         self.auto_fetch_btn.configure(state="disabled")
-        self.status_lbl.configure(text=f"{len(rjs)} 件の作品情報をDLsiteから取得・同期中...", text_color="#3a86ff")
+        self.status_lbl.configure(text=f"{len(rjs)} 件の公式画像・メタデータを同期中...", text_color="#3a86ff")
 
         def worker():
             def on_progress(cur, total, rj):
@@ -314,21 +382,84 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
                 self.icon_helper,
                 progress_callback=on_progress
             )
-            self.after(0, lambda: self._on_finished(matched, added, len(rjs)))
+            self.after(0, lambda: self._on_dlsite_finished(matched, added, len(rjs)))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_finished(self, matched: int, added: int, total: int):
+    def _on_dlsite_finished(self, matched: int, added: int, total: int):
         self.progress_bar.set(1.0)
         self.status_lbl.configure(
-            text=f"完了！ PC内照合: {matched} 件 | 未ダウンロード登録: {added} 件",
+            text=f"完了！ PC内照合・画像更新: {matched} 件 | 未ダウンロード登録: {added} 件",
             text_color="#2b7a4b"
         )
         messagebox.showinfo(
-            "取り込み完了",
-            f"DLsite購入履歴の同期が完了しました！\n\n"
-            f"・取得した購入作品: {total} 件\n"
-            f"・PC内ゲームと照合済み: {matched} 件\n"
+            "DLsite取り込み完了",
+            f"DLsite作品の同期が完了しました！\n\n"
+            f"・対象作品数: {total} 件\n"
+            f"・PC内ゲームと照合（公式画像差し替え済み）: {matched} 件\n"
+            f"・新規登録（未ダウンロード作品）: {added} 件"
+        )
+        if self.on_complete:
+            self.on_complete()
+        self.destroy()
+
+    # === FANZA 処理 ===
+    def _browse_fanza_html(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="FANZA購入履歴・マイライブラリのHTMLファイルを選択",
+            filetypes=[("HTML Files", "*.html;*.htm"), ("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+        if path:
+            items = FANZAPurchaseImporter.extract_from_html_file(path)
+            if items:
+                lines = [it["value"] for it in items]
+                self.fanza_text_area.delete("1.0", "end")
+                self.fanza_text_area.insert("1.0", "\n".join(lines))
+                self.status_lbl.configure(text=f"HTMLから {len(items)} 件のFANZA作品を検出しました！", text_color="#a855f7")
+            else:
+                messagebox.showwarning("警告", "選択されたファイルからFANZA作品情報が見つかりませんでした。")
+
+    def _start_fanza_sync(self):
+        raw_text = self.fanza_text_area.get("1.0", "end").strip()
+        items = FANZAPurchaseImporter.extract_cids_and_titles(raw_text)
+
+        if not items:
+            messagebox.showwarning("入力不足", "有効なCIDまたは作品名が見つかりませんでした。HTMLまたは作品名を入力してください。")
+            return
+
+        self.fanza_sync_btn.configure(state="disabled")
+        self.progress_bar.set(0)
+        self.status_lbl.configure(text=f"{len(items)} 件のFANZA公式画像・メタデータを同期中...", text_color="#a855f7")
+
+        def worker():
+            def on_progress(cur, total, val):
+                val_prog = cur / max(1, total)
+                self.after(0, lambda: self.progress_bar.set(val_prog))
+                self.after(0, lambda: self.status_lbl.configure(text=f"FANZA同期中: {cur}/{total} ({val})", text_color="#c084fc"))
+
+            matched, added = FANZAPurchaseImporter.sync_fanza_games(
+                items,
+                self.config_mgr,
+                self.icon_helper,
+                progress_callback=on_progress
+            )
+            self.after(0, lambda: self._on_fanza_finished(matched, added, len(items)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_fanza_finished(self, matched: int, added: int, total: int):
+        self.progress_bar.set(1.0)
+        self.fanza_sync_btn.configure(state="normal")
+        self.status_lbl.configure(
+            text=f"FANZA完了！ PC内照合・画像更新: {matched} 件 | 未ダウンロード登録: {added} 件",
+            text_color="#2b7a4b"
+        )
+        messagebox.showinfo(
+            "FANZA取り込み完了",
+            f"FANZA作品の同期が完了しました！\n\n"
+            f"・照合対象数: {total} 件\n"
+            f"・PC内ゲームと照合（公式パッケージ画像に更新）: {matched} 件\n"
             f"・新規登録（未ダウンロード作品）: {added} 件"
         )
         if self.on_complete:

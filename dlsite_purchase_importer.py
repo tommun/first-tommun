@@ -170,6 +170,31 @@ class DLsitePurchaseImporter:
                     g["is_purchased"] = True
                     found_local = True
                     matched_local_count += 1
+                    
+                    # 同期できた作品のサムネイルをDLsite公式商品画像に差し替え＆メタデータ補完
+                    meta = DLsiteMetadataFetcher.fetch_by_rj(rj)
+                    if meta:
+                        g["dlsite_url"] = meta.get("url")
+                        if meta.get("genre") and meta["genre"] != "その他":
+                            g["genre"] = meta["genre"]
+                            g["category"] = meta["genre"]
+                        if meta.get("tags"):
+                            for t in meta["tags"]:
+                                if t not in g.get("tags", []):
+                                    g.setdefault("tags", []).append(t)
+                        if meta.get("maker") and meta["maker"] != "不明":
+                            g["author"] = meta["maker"]
+                        if g.get("name", "").upper().startswith("RJ") or not g.get("name"):
+                            g["name"] = meta["title"]
+                        
+                        # 公式サムネイル画像に差し替え（ロックされていない場合）
+                        if meta.get("image_url") and not g.get("icon_locked"):
+                            img = icon_helper.download_image(meta["image_url"])
+                            if img:
+                                p = icon_helper.cache_image(f"dlsite_{rj}", img)
+                                if p:
+                                    g["icon_path"] = p
+                                    g["icon_quality"] = QUALITY_DLSITE_OFFICIAL
                     break
 
             if not found_local:

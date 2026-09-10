@@ -29,6 +29,7 @@ from game_edit_dialog import GameEditDialog
 from font_manager import get_mac_font, get_mac_font_family
 from dlsite_metadata import DLsiteMetadataFetcher
 from dlsite_purchase_dialog import DLsitePurchaseDialog
+from fanza_metadata import FANZAMetadataFetcher
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -235,7 +236,7 @@ class ModernLauncherApp(ctk.CTk):
 
         self.dlsite_sync_btn = ctk.CTkButton(
             right_box,
-            text="🌐 DLsite同期",
+            text="🌐 ストア同期",
             width=92,
             height=34,
             corner_radius=17,
@@ -1097,38 +1098,65 @@ class ModernLauncherApp(ctk.CTk):
         DLsitePurchaseDialog(self, self.config_mgr, self.icon_helper, on_complete=self.refresh_games)
 
     def _trigger_dlsite_sync_all(self):
-        """全ゲームのDLsite情報（公式タイトル・サークル・ジャンル・タグ・ジャケット）を一括同期"""
-        self.status_lbl.configure(text="🌐 全ゲームのDLsite情報（ジャンル・タグ・サークル）を一括取得中...", text_color="#3a86ff")
+        """全ゲームのDLsiteおよびFANZA公式情報・商品画像を一括同期"""
+        self.status_lbl.configure(text="🌐 全ゲームの公式商品画像・ジャンル・タグを一括取得中...", text_color="#3a86ff")
 
         def worker():
             updated_count = 0
             for game in self.config_mgr.games:
-                meta = DLsiteMetadataFetcher.get_metadata_for_game(game)
-                if meta:
-                    game["rj_code"] = meta["rj_code"]
-                    game["dlsite_url"] = meta["url"]
-                    game["platform"] = "DLsite"
-                    game["genre"] = meta["genre"]
-                    game["category"] = meta["genre"]
-                    game["tags"] = meta["tags"]
+                plat = game.get("platform", "DLsite")
+                if plat == "FANZA":
+                    meta = FANZAMetadataFetcher.search_by_title(game.get("name", ""))
+                    if meta:
+                        game["fanza_cid"] = meta.get("content_id", "")
+                        game["fanza_url"] = meta.get("url", "")
+                        if meta.get("genre") and meta["genre"] != "その他":
+                            game["genre"] = meta["genre"]
+                            game["category"] = meta["genre"]
+                        if meta.get("tags"):
+                            for t in meta["tags"]:
+                                if t not in game.get("tags", []):
+                                    game.setdefault("tags", []).append(t)
+                        if meta.get("maker") and meta["maker"] != "不明":
+                            game["author"] = meta["maker"]
+                        if meta.get("image_url") and not game.get("icon_locked"):
+                            img = self.icon_helper.download_image(meta["image_url"])
+                            if img:
+                                p = self.icon_helper.cache_image(f"fanza_{meta.get('content_id', abs(hash(game.get('name'))))}", img)
+                                if p:
+                                    game["icon_path"] = p
+                                    game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+                        updated_count += 1
+                        self.after(0, lambda n=game.get('name'): self.status_lbl.configure(
+                            text=f"🟣 FANZA同期中: {updated_count}件完了 ({n})", text_color="#a855f7"
+                        ))
+                else:
+                    meta = DLsiteMetadataFetcher.get_metadata_for_game(game)
+                    if meta:
+                        game["rj_code"] = meta["rj_code"]
+                        game["dlsite_url"] = meta["url"]
+                        game["platform"] = "DLsite"
+                        game["genre"] = meta["genre"]
+                        game["category"] = meta["genre"]
+                        game["tags"] = meta["tags"]
 
-                    if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
-                        game["name"] = meta["title"]
-                    if game.get("author") in ["不明", None, "", "download"]:
-                        game["author"] = meta["maker"]
+                        if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
+                            game["name"] = meta["title"]
+                        if game.get("author") in ["不明", None, "", "download"]:
+                            game["author"] = meta["maker"]
 
-                    if meta.get("image_url") and not game.get("icon_locked"):
-                        img = self.icon_helper.download_image(meta["image_url"])
-                        if img:
-                            p = self.icon_helper.cache_image(f"dlsite_{meta['rj_code']}", img)
-                            if p:
-                                game["icon_path"] = p
-                                game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+                        if meta.get("image_url") and not game.get("icon_locked"):
+                            img = self.icon_helper.download_image(meta["image_url"])
+                            if img:
+                                p = self.icon_helper.cache_image(f"dlsite_{meta['rj_code']}", img)
+                                if p:
+                                    game["icon_path"] = p
+                                    game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
 
-                    updated_count += 1
-                    self.after(0, lambda n=game.get('name'): self.status_lbl.configure(
-                        text=f"🌐 DLsite同期中: {updated_count}件完了 ({n})", text_color="#3a86ff"
-                    ))
+                        updated_count += 1
+                        self.after(0, lambda n=game.get('name'): self.status_lbl.configure(
+                            text=f"🌐 DLsite同期中: {updated_count}件完了 ({n})", text_color="#3a86ff"
+                        ))
             self.config_mgr.save()
             self.after(0, lambda: self._on_dlsite_sync_done(updated_count))
 
@@ -1156,6 +1184,46 @@ class ModernLauncherApp(ctk.CTk):
                 url = f"https://www.dlsite.com/maniax/fsr/=/language/jp/keyword/{enc}"
         webbrowser.open(url)
         self.status_lbl.configure(text=f"ブラウザで商品ページを開きました: {game.get('name')}", text_color="#77aaf6")
+
+    def _fetch_single_game_fanza_metadata(self, game: Dict[str, Any]):
+        """単体ゲームのFANZA情報を取得し公式画像・ジャンル・タグに差し替え"""
+        name = game.get("name", "")
+        self.status_lbl.configure(text=f"🟣 FANZAから情報取得中: {name}...", text_color="#a855f7")
+
+        def worker():
+            meta = FANZAMetadataFetcher.search_by_title(name)
+            if meta:
+                game["fanza_cid"] = meta.get("content_id", "")
+                game["fanza_url"] = meta.get("url", "")
+                game["platform"] = "FANZA"
+                if meta.get("genre") and meta["genre"] != "その他":
+                    game["genre"] = meta["genre"]
+                    game["category"] = meta["genre"]
+                if meta.get("tags"):
+                    for t in meta["tags"]:
+                        if t not in game.get("tags", []):
+                            game.setdefault("tags", []).append(t)
+                if meta.get("maker") and meta["maker"] != "不明":
+                    game["author"] = meta["maker"]
+
+                # 公式商品画像に差し替え
+                if meta.get("image_url") and not game.get("icon_locked"):
+                    img = self.icon_helper.download_image(meta["image_url"])
+                    if img:
+                        p = self.icon_helper.cache_image(f"fanza_{meta.get('content_id', abs(hash(name)))}", img)
+                        if p:
+                            game["icon_path"] = p
+                            game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+                self.config_mgr.save()
+                self.after(0, lambda: self._on_single_fanza_done(game))
+            else:
+                self.after(0, lambda: self.status_lbl.configure(text=f"FANZA情報が見つかりませんでした: {name}", text_color="#d9534f"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_single_fanza_done(self, game: Dict[str, Any]):
+        self.status_lbl.configure(text=f"✨ FANZA公式情報・画像を反映しました: {game.get('name')} [{game.get('genre')}]", text_color="#2b7a4b")
+        self.refresh_games()
 
     def _fetch_single_game_dlsite_metadata(self, game: Dict[str, Any]):
         """単体ゲームのDLsite情報を取得・反映"""
@@ -1219,7 +1287,10 @@ class ModernLauncherApp(ctk.CTk):
 
         store_title = "🌐 DLsite商品ページを開く (ブラウザ)" if plat == "DLsite" else ("🌐 FANZA商品ページを開く (ブラウザ)" if plat == "FANZA" else "🌐 Web検索で作品を探す")
         menu.add_command(label=store_title, command=lambda: self._open_store_page(game))
-        menu.add_command(label="🔄 DLsiteから最新情報を取得 (ジャンル/タグ/サークル)", command=lambda: self._fetch_single_game_dlsite_metadata(game))
+        if plat == "FANZA":
+            menu.add_command(label="🔄 FANZAから最新情報を取得 (公式画像/ジャンル/タグ)", command=lambda: self._fetch_single_game_fanza_metadata(game))
+        else:
+            menu.add_command(label="🔄 DLsiteから最新情報を取得 (ジャンル/タグ/サークル)", command=lambda: self._fetch_single_game_dlsite_metadata(game))
         menu.add_separator()
 
         group_key = None
