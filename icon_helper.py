@@ -160,7 +160,7 @@ class IconHelper:
             pass
         return results
 
-    def download_image(self, url: str, target_size: Tuple[int, int] = (140, 140)) -> Optional[Image.Image]:
+    def download_image(self, url: str, target_size: Tuple[int, int] = (260, 260)) -> Optional[Image.Image]:
         """URLから画像をダウンロードして正方形のPIL Imageとして整形"""
         try:
             req = urllib.request.Request(url, headers=self.headers)
@@ -186,7 +186,7 @@ class IconHelper:
         except Exception:
             return ""
 
-    def process_local_image(self, local_path: str, target_size: Tuple[int, int] = (140, 140)) -> Optional[str]:
+    def process_local_image(self, local_path: str, target_size: Tuple[int, int] = (260, 260)) -> Optional[str]:
         """ローカル画像（イラスト）を正方形サムネイルに整形してキャッシュに保存"""
         if not local_path or not os.path.exists(local_path):
             return None
