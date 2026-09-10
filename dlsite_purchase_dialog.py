@@ -8,7 +8,7 @@ from font_manager import get_mac_font
 from dlsite_purchase_importer import DLsitePurchaseImporter
 
 class DLsitePurchaseDialog(ctk.CTkToplevel):
-    """DLsiteの購入履歴（HTML・テキスト・RJ番号）を取り込むダイアログ"""
+    """DLsiteの購入履歴（直接ログイン自動スクレイピング・HTML・RJ番号一覧）を取り込むダイアログ"""
 
     def __init__(self, master, config_mgr, icon_helper, on_complete):
         super().__init__(master)
@@ -16,9 +16,9 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         self.icon_helper = icon_helper
         self.on_complete = on_complete
 
-        self.title("📥 DLsite購入履歴の取り込み")
-        self.geometry("640x540")
-        self.minsize(580, 480)
+        self.title("📥 DLsite購入履歴の自動同期・取り込み")
+        self.geometry("660x640")
+        self.minsize(620, 560)
         self.configure(fg_color="#09071a")
 
         self.grab_set()
@@ -39,15 +39,15 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         # タイトル
         ctk.CTkLabel(
             container,
-            text="📥 DLsite購入済み作品の取り込み・照合",
+            text="📥 DLsite購入作品の自動スクレイピング・取り込み",
             font=get_mac_font(size=17, weight="bold"),
             text_color="#ffffff"
-        ).pack(anchor="w", padx=16, pady=(16, 6))
+        ).pack(anchor="w", padx=16, pady=(16, 4))
 
         # 説明文
         desc = (
-            "DLsiteのマイページ「購入履歴」から購入作品をライブラリに取り込みます。\n"
-            "PC内にすでにあるゲームは自動照合され、未インストールの購入作品も登録・管理できます。"
+            "DLsiteアカウントで直接ログインして購入済み作品を全自動で取得・同期します。\n"
+            "※ パスワード等は保存されず、購入履歴の取得通信のみに使用されます。"
         )
         ctk.CTkLabel(
             container,
@@ -55,59 +55,123 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             font=get_mac_font(size=11),
             text_color="#9e9abf",
             justify="left"
-        ).pack(anchor="w", padx=16, pady=(0, 14))
+        ).pack(anchor="w", padx=16, pady=(0, 12))
 
-        # 方法1: ブラウザで開くボタン ＆ HTMLファイル選択
-        step1_box = ctk.CTkFrame(container, corner_radius=12, fg_color="#181335", border_width=1, border_color="#2c2258")
-        step1_box.pack(fill="x", padx=16, pady=(0, 12))
+        # === タブビュー (ログインして自動スクレイピング / HTML・手動入力) ===
+        tabview = ctk.CTkTabview(
+            container,
+            fg_color="#181335",
+            segmented_button_fg_color="#100c26",
+            segmented_button_selected_color="#3a86ff",
+            segmented_button_selected_hover_color="#2b68cb",
+            segmented_button_unselected_color="#181335",
+            segmented_button_unselected_hover_color="#231b4d"
+        )
+        tabview.pack(fill="both", expand=True, padx=16, pady=(0, 10))
 
+        tab_login = tabview.add("🔑 ログインして全自動取得 (推奨)")
+        tab_manual = tabview.add("📄 HTMLファイル / テキスト貼り付け")
+
+        # --- タブ1: ログイン自動取得 ---
         ctk.CTkLabel(
-            step1_box,
-            text="① ブラウザで購入履歴ページを開き、HTMLを保存する",
-            font=get_mac_font(size=12, weight="bold"),
-            text_color="#77aaf6"
-        ).pack(anchor="w", padx=12, pady=(10, 4))
+            tab_login,
+            text="DLsiteのログイン情報を入力して「自動取得を開始」を押してください：",
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#ffffff"
+        ).pack(anchor="w", padx=10, pady=(10, 8))
 
-        row1 = ctk.CTkFrame(step1_box, fg_color="transparent")
-        row1.pack(fill="x", padx=12, pady=(0, 10))
+        form_box = ctk.CTkFrame(tab_login, fg_color="transparent")
+        form_box.pack(fill="x", padx=10, pady=(0, 10))
+
+        # ログインID
+        ctk.CTkLabel(
+            form_box,
+            text="ログインID / メールアドレス:",
+            font=get_mac_font(size=11),
+            text_color="#9e9abf"
+        ).grid(row=0, column=0, sticky="w", pady=4)
+
+        self.login_id_entry = ctk.CTkEntry(
+            form_box,
+            width=320,
+            height=32,
+            corner_radius=8,
+            fg_color="#0c0920",
+            border_color="#2c2258",
+            text_color="#ffffff",
+            font=get_mac_font(size=11),
+            placeholder_text="example@email.com"
+        )
+        self.login_id_entry.grid(row=0, column=1, sticky="w", padx=10, pady=4)
+
+        # パスワード
+        ctk.CTkLabel(
+            form_box,
+            text="パスワード:",
+            font=get_mac_font(size=11),
+            text_color="#9e9abf"
+        ).grid(row=1, column=0, sticky="w", pady=4)
+
+        self.password_entry = ctk.CTkEntry(
+            form_box,
+            width=320,
+            height=32,
+            corner_radius=8,
+            fg_color="#0c0920",
+            border_color="#2c2258",
+            text_color="#ffffff",
+            show="●",
+            font=get_mac_font(size=11),
+            placeholder_text="パスワード"
+        )
+        self.password_entry.grid(row=1, column=1, sticky="w", padx=10, pady=4)
+
+        self.auto_fetch_btn = ctk.CTkButton(
+            tab_login,
+            text="🚀 ログインして購入履歴を自動スクレイピング",
+            height=36,
+            corner_radius=18,
+            fg_color="#ff007a",
+            hover_color="#d60066",
+            text_color="#ffffff",
+            font=get_mac_font(size=12, weight="bold"),
+            command=self._start_auto_login_scraping
+        )
+        self.auto_fetch_btn.pack(anchor="w", padx=10, pady=(6, 8))
+
+        # --- タブ2: HTML / 手動貼り付け ---
+        row_browse = ctk.CTkFrame(tab_manual, fg_color="transparent")
+        row_browse.pack(fill="x", padx=10, pady=(8, 8))
 
         ctk.CTkButton(
-            row1,
-            text="🌐 DLsite購入履歴ページを開く (ブラウザ)",
-            width=240,
-            height=32,
+            row_browse,
+            text="🌐 ブラウザで購入履歴を開く",
+            width=180,
+            height=30,
             corner_radius=8,
             fg_color="#2c2266",
             hover_color="#3d308c",
             text_color="#ffffff",
-            font=get_mac_font(size=11, weight="bold"),
-            command=self._open_dlsite_mypage
+            font=get_mac_font(size=11),
+            command=lambda: webbrowser.open("https://www.dlsite.com/maniax/mypage/userbuy")
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
-            row1,
+            row_browse,
             text="📄 保存したHTMLファイルを選択...",
             width=200,
-            height=32,
+            height=30,
             corner_radius=8,
             fg_color="#3a86ff",
             hover_color="#2b68cb",
             text_color="#ffffff",
-            font=get_mac_font(size=11, weight="bold"),
+            font=get_mac_font(size=11),
             command=self._browse_html_file
         ).pack(side="left")
 
-        # 方法2: RJ番号またはHTMLテキストを直接貼り付け
-        ctk.CTkLabel(
-            container,
-            text="② または、RJ番号一覧やHTMLソースを直接貼り付ける:",
-            font=get_mac_font(size=12, weight="bold"),
-            text_color="#77aaf6"
-        ).pack(anchor="w", padx=16, pady=(0, 6))
-
         self.text_area = ctk.CTkTextbox(
-            container,
-            height=160,
+            tab_manual,
+            height=120,
             corner_radius=10,
             fg_color="#0c0920",
             border_width=1,
@@ -115,8 +179,8 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             text_color="#ffffff",
             font=get_mac_font(size=11)
         )
-        self.text_area.pack(fill="both", expand=True, padx=16, pady=(0, 12))
-        self.text_area.insert("1.0", "ここにRJ番号（例: RJ01360185）やHTMLソースを貼り付けてください...")
+        self.text_area.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        self.text_area.insert("1.0", "ここにRJ番号（例: RJ01360185）またはHTMLを直接貼り付けも可能です")
 
         # プログレスバー & ステータス
         self.progress_bar = ctk.CTkProgressBar(container, height=6, corner_radius=3, fg_color="#181335", progress_color="#3a86ff")
@@ -131,13 +195,13 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         )
         self.status_lbl.pack(anchor="w", padx=16, pady=(0, 10))
 
-        # アクションボタン
+        # 下部ボタン
         btn_box = ctk.CTkFrame(container, fg_color="transparent")
         btn_box.pack(fill="x", padx=16, pady=(0, 12))
 
-        self.start_btn = ctk.CTkButton(
+        self.start_import_btn = ctk.CTkButton(
             btn_box,
-            text="📥 取り込みを開始する",
+            text="📥 ライブラリ同期を実行",
             height=36,
             corner_radius=18,
             fg_color="#3a86ff",
@@ -146,7 +210,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             font=get_mac_font(size=12, weight="bold"),
             command=self._start_import
         )
-        self.start_btn.pack(side="right", padx=(8, 0))
+        self.start_import_btn.pack(side="right", padx=(8, 0))
 
         ctk.CTkButton(
             btn_box,
@@ -161,8 +225,52 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             command=self.destroy
         ).pack(side="right")
 
-    def _open_dlsite_mypage(self):
-        webbrowser.open("https://www.dlsite.com/maniax/mypage/userbuy")
+    def _start_auto_login_scraping(self):
+        login_id = self.login_id_entry.get().strip()
+        password = self.password_entry.get().strip()
+
+        if not login_id or not password:
+            messagebox.showwarning("入力エラー", "ログインIDとパスワードを入力してください。")
+            return
+
+        self.auto_fetch_btn.configure(state="disabled")
+        self.start_import_btn.configure(state="disabled")
+        self.progress_bar.set(0.1)
+        self.status_lbl.configure(text="DLsiteに接続中...", text_color="#3a86ff")
+
+        def worker():
+            def on_progress(msg):
+                self.after(0, lambda: self.status_lbl.configure(text=msg, text_color="#77aaf6"))
+
+            success, msg, rjs = DLsitePurchaseImporter.login_and_fetch_purchased_rjs(
+                login_id, password, progress_callback=on_progress
+            )
+
+            def on_login_done():
+                self.auto_fetch_btn.configure(state="normal")
+                self.start_import_btn.configure(state="normal")
+
+                if not success:
+                    self.status_lbl.configure(text=f"ログイン失敗: {msg}", text_color="#f87171")
+                    messagebox.showerror("ログイン失敗", f"DLsiteへのログインに失敗しました:\n\n{msg}")
+                    return
+
+                if not rjs:
+                    self.status_lbl.configure(text=msg, text_color="#facc15")
+                    messagebox.showinfo("情報", msg)
+                    return
+
+                # RJコードが取得できたら手動エリアにも反映し、同期開始
+                self.text_area.delete("1.0", "end")
+                self.text_area.insert("1.0", "\n".join(rjs))
+                self.status_lbl.configure(text=f"{len(rjs)} 件の作品を検出しました。ライブラリ同期を開始します...", text_color="#3a86ff")
+
+                # 自動でライブラリ同期へ移行
+                self._run_sync_worker(rjs)
+
+            self.after(0, on_login_done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _browse_html_file(self):
         path = filedialog.askopenfilename(
@@ -184,10 +292,14 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         rjs = DLsitePurchaseImporter.extract_rj_codes_from_text(raw_text)
 
         if not rjs:
-            messagebox.showwarning("入力不足", "有効なRJ番号が見つかりませんでした。HTMLまたはRJコードを貼り付けてください。")
+            messagebox.showwarning("入力不足", "有効なRJ番号が見つかりませんでした。「ログインして全自動取得」を行うか、RJコードを入力してください。")
             return
 
-        self.start_btn.configure(state="disabled")
+        self._run_sync_worker(rjs)
+
+    def _run_sync_worker(self, rjs):
+        self.start_import_btn.configure(state="disabled")
+        self.auto_fetch_btn.configure(state="disabled")
         self.status_lbl.configure(text=f"{len(rjs)} 件の作品情報をDLsiteから取得・同期中...", text_color="#3a86ff")
 
         def worker():
@@ -215,7 +327,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         messagebox.showinfo(
             "取り込み完了",
             f"DLsite購入履歴の同期が完了しました！\n\n"
-            f"・対象RJコード: {total} 件\n"
+            f"・取得した購入作品: {total} 件\n"
             f"・PC内ゲームと照合済み: {matched} 件\n"
             f"・新規登録（未ダウンロード作品）: {added} 件"
         )
