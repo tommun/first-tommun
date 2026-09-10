@@ -118,9 +118,22 @@ class ConfigManager:
         return None
 
     def get_game_by_path(self, exe_path: str) -> Optional[Dict[str, Any]]:
+        if not exe_path or not exe_path.strip():
+            return None
         norm = os.path.normcase(os.path.normpath(exe_path))
         for g in self.games:
-            if os.path.normcase(os.path.normpath(g.get("path", ""))) == norm:
+            g_path = g.get("path", "")
+            if g_path and os.path.normcase(os.path.normpath(g_path)) == norm:
+                return g
+        return None
+
+    def get_game_by_rj(self, rj_code: str) -> Optional[Dict[str, Any]]:
+        if not rj_code or not rj_code.strip():
+            return None
+        rj_upper = rj_code.strip().upper()
+        for g in self.games:
+            g_rj = (g.get("rj_code") or g.get("dlsite_id") or "").upper()
+            if g_rj == rj_upper:
                 return g
         return None
 
@@ -129,18 +142,35 @@ class ConfigManager:
         if "id" not in game_data or not game_data["id"]:
             game_data["id"] = str(uuid.uuid4())
 
+        # 1. ID照合
         existing = self.get_game_by_id(game_data["id"])
         if existing:
             existing.update(game_data)
-        else:
-            # パス重複チェック
-            existing_by_path = self.get_game_by_path(game_data.get("path", ""))
+            self.save()
+            return existing["id"]
+
+        # 2. RJコード照合 (DLsite作品の二重登録防止)
+        target_rj = game_data.get("rj_code") or game_data.get("dlsite_id")
+        if target_rj:
+            existing_by_rj = self.get_game_by_rj(target_rj)
+            if existing_by_rj:
+                existing_by_rj.update(game_data)
+                game_data["id"] = existing_by_rj["id"]
+                self.save()
+                return existing_by_rj["id"]
+
+        # 3. 実行パス照合 (空パスでない場合のみ)
+        path = game_data.get("path", "")
+        if path and path.strip():
+            existing_by_path = self.get_game_by_path(path)
             if existing_by_path:
                 existing_by_path.update(game_data)
                 game_data["id"] = existing_by_path["id"]
-            else:
-                self.config["games"].append(game_data)
+                self.save()
+                return existing_by_path["id"]
 
+        # 4. 新規追加
+        self.config["games"].append(game_data)
         self.save()
         return game_data["id"]
 
