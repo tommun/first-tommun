@@ -18,6 +18,7 @@ class ComparisonDialog(ctk.CTkToplevel):
         self.title("🔄 同一ゲームの検出・進行度比較")
         self.geometry("820x560")
         self.minsize(700, 480)
+        self.configure(fg_color="#080617")
 
         # モーダル化
         self.grab_set()
@@ -27,7 +28,13 @@ class ComparisonDialog(ctk.CTkToplevel):
 
     def _build_ui(self):
         # メインコンテナ
-        main_frame = ctk.CTkFrame(self, corner_radius=12)
+        main_frame = ctk.CTkFrame(
+            self,
+            corner_radius=16,
+            fg_color="#121028",
+            border_width=1,
+            border_color="#221e4a"
+        )
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         # ヘッダー
@@ -35,7 +42,8 @@ class ComparisonDialog(ctk.CTkToplevel):
         header_lbl = ctk.CTkLabel(
             main_frame,
             text=f"🎮 {title_text}",
-            font=get_mac_font(size=20, weight="bold")
+            font=get_mac_font(size=20, weight="bold"),
+            text_color="#ffffff"
         )
         header_lbl.pack(anchor="w", padx=20, pady=(15, 5))
 
@@ -43,7 +51,7 @@ class ComparisonDialog(ctk.CTkToplevel):
             main_frame,
             text=f"同じゲームが {len(self.game_group)} 箇所で検出されました。バージョンの違いやセーブデータの進行状況を確認できます。",
             font=get_mac_font(size=13),
-            text_color="gray70"
+            text_color="#8d89b0"
         )
         desc_lbl.pack(anchor="w", padx=20, pady=(0, 15))
 

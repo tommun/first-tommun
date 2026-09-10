@@ -19,6 +19,7 @@ class FolderManagerDialog(ctk.CTkToplevel):
         self.title("📁 ライブラリフォルダ管理")
         self.geometry("680x500")
         self.minsize(580, 400)
+        self.configure(fg_color="#080617")
 
         self.grab_set()
         self.focus_set()
@@ -27,21 +28,28 @@ class FolderManagerDialog(ctk.CTkToplevel):
         self._refresh_list()
 
     def _build_ui(self):
-        main_frame = ctk.CTkFrame(self, corner_radius=12)
+        main_frame = ctk.CTkFrame(
+            self,
+            corner_radius=16,
+            fg_color="#121028",
+            border_width=1,
+            border_color="#221e4a"
+        )
         main_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
         # ヘッダー
         ctk.CTkLabel(
             main_frame,
             text="📁 スキャン対象フォルダ一覧",
-            font=get_mac_font(size=18, weight="bold")
+            font=get_mac_font(size=18, weight="bold"),
+            text_color="#ffffff"
         ).pack(anchor="w", padx=15, pady=(15, 5))
 
         ctk.CTkLabel(
             main_frame,
             text="登録されたフォルダ配下のゲームを自動探索・追加します。新しいフォルダを自由に追加できます。",
             font=get_mac_font(size=12),
-            text_color="gray70"
+            text_color="#8d89b0"
         ).pack(anchor="w", padx=15, pady=(0, 15))
 
         # ツールバー（追加・一括スキャン）

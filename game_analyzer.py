@@ -7,6 +7,13 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
+def extract_rj_code(text: str) -> Optional[str]:
+    """テキストからRJ番号/VJ番号/BJ番号を抽出"""
+    m = re.search(r'\b(RJ|VJ|BJ)\d{6,8}\b', text, re.IGNORECASE)
+    if m:
+        return m.group(0).upper()
+    return None
+
 def normalize_title(name: str) -> str:
     """バージョン表記や記号、拡張子を除去してベースとなるゲームタイトルを生成"""
     s = name.strip()
@@ -106,7 +113,10 @@ class GameAnalyzer:
 
     @classmethod
     def group_identical_games(cls, games: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """登録ゲーム一覧から、同一ゲーム（バージョン違いや重複コピー）をグループ化して返す"""
+        """
+        登録ゲーム一覧から、同一ゲーム（バージョン違いや重複コピー）を厳格にグループ化して返す。
+        違うゲームが同じカードに収まることを絶対に避けるため、曖昧なマッチングは排除する。
+        """
         groups: Dict[str, List[Dict[str, Any]]] = {}
 
         for game in games:
@@ -114,28 +124,43 @@ class GameAnalyzer:
             folder_path = game.get("folder_path", os.path.dirname(game.get("path", "")))
             exe_path = game.get("path", "")
             is_standalone = game.get("is_standalone", False)
+            author = (game.get("author") or "").strip()
+            rj_code = game.get("rj_code") or extract_rj_code(name + " " + exe_path + " " + folder_path)
 
             internal = cls.get_game_internal_id(folder_path, exe_path, is_standalone=is_standalone)
+            if not rj_code and internal.get("rj_code"):
+                rj_code = internal["rj_code"]
 
-            # グループキーの決定優先度:
-            # 1. RJコード
-            # 2. Unity (Company + Product)
-            # 3. RPGMaker / GameMaker タイトル
-            # 4. 正規化タイトル名
+            # 厳格なグループキー決定ルール:
+            # 1. RJコード/VJコードが一致する場合（DLsite公式作品固有コード）
+            # 2. Unity app.info の Company + Product が実質的な名前で一致する場合
+            # 3. RPGツクール / GameMaker の内部タイトルが実質的な名前で一致する場合
+            # 4. 正規化タイトルが完全に一致し、かつ作者名が一致（またはどちらかが不明）する場合
+            # ※ 汎用的な名前（game, start, app, playなど）や空文字列は絶対に単独グルーピングしない
             group_key = None
-            if internal.get("rj_code"):
-                group_key = f"RJ:{internal['rj_code']}"
-            elif internal.get("unity_product"):
-                group_key = f"UNITY:{internal['unity_company']}_{internal['unity_product']}"
-            elif internal.get("rpgmaker_title"):
+            generic_names = ["game", "start", "app", "play", "main", "launch", "launcher", "rpg_rt", "nw"]
+
+            if rj_code and re.match(r'^(RJ|VJ|BJ)\d{6,8}$', rj_code.upper()):
+                group_key = f"RJ:{rj_code.upper()}"
+            elif internal.get("unity_product") and internal["unity_product"].lower() not in generic_names:
+                company = internal.get("unity_company") or "unknown"
+                group_key = f"UNITY:{company}_{internal['unity_product']}"
+            elif internal.get("rpgmaker_title") and internal["rpgmaker_title"].lower() not in generic_names:
                 group_key = f"RPGM:{normalize_title(internal['rpgmaker_title'])}"
-            elif internal.get("gamemaker_title"):
+            elif internal.get("gamemaker_title") and internal["gamemaker_title"].lower() not in generic_names:
                 group_key = f"GM:{normalize_title(internal['gamemaker_title'])}"
             else:
                 norm = normalize_title(name)
-                if not norm:
-                    norm = normalize_title(os.path.basename(exe_path))
-                group_key = f"TITLE:{norm}"
+                # 3文字未満または汎用名は個別キーにしてグループ化を避ける
+                if len(norm) < 3 or norm in generic_names:
+                    group_key = f"UNIQUE:{game.get('id', exe_path)}"
+                else:
+                    # 作者情報がある場合はキーに含めて異なる作者の別作品を確実に分離
+                    clean_author = author.lower() if (author and author != "不明") else ""
+                    if clean_author:
+                        group_key = f"TITLE_AUTHOR:{clean_author}:{norm}"
+                    else:
+                        group_key = f"TITLE:{norm}"
 
             if group_key not in groups:
                 groups[group_key] = []

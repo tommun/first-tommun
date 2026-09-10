@@ -3,18 +3,19 @@ from tkinter import font as tkfont
 from typing import Optional
 import customtkinter as ctk
 
-# macOS準拠のフォント優先順位リスト
+# DLsite Sound & macOS準拠のフォント優先順位リスト
 MAC_FONT_CANDIDATES = [
+    "Zen Maru Gothic",          # DLsite Sound 特設サイト指定フォント
+    "SF Pro Rounded",           # Apple Rounded
     "SF Pro Display",
     "SF Pro Text",
     "SF Pro",
-    "Helvetica Neue",
-    "Helvetica",
+    "Hiragino Maru Gothic ProN",
     "Hiragino Sans",
     "Hiragino Kaku Gothic ProN",
-    "Hiragino Kaku Gothic Pro",
-    "Apple SD Gothic Neo",
-    "Yu Gothic UI",     # WindowsにおけるMacヒラギノに最も近いモダン角ゴシック
+    "Helvetica Neue",
+    "BIZ UDGothic",
+    "Yu Gothic UI",             # Windowsモダン角ゴシック
     "Segoe UI",
     "Meiryo UI",
 ]

@@ -21,6 +21,7 @@ class IconPickerDialog(ctk.CTkToplevel):
         self.title("🔍 アイコン・カバー画像を選択")
         self.geometry("740x560")
         self.minsize(640, 480)
+        self.configure(fg_color="#080617")
 
         self.grab_set()
         self.focus_set()
@@ -31,7 +32,13 @@ class IconPickerDialog(ctk.CTkToplevel):
         self.after(200, self._start_search)
 
     def _build_ui(self):
-        main_frame = ctk.CTkFrame(self, corner_radius=12)
+        main_frame = ctk.CTkFrame(
+            self,
+            corner_radius=16,
+            fg_color="#121028",
+            border_width=1,
+            border_color="#221e4a"
+        )
         main_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
         # 検索バー行

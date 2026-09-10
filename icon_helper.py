@@ -22,20 +22,29 @@ QUALITY_BING_GENERIC = 3   # 一般Web検索
 QUALITY_DLSITE_OFFICIAL = 4 # DLsite公式ジャケット
 QUALITY_LOCAL_ORIGINAL = 5  # ローカルの元イラスト・ジャケット画像
 
-def generate_query_candidates(name: str, path: str = "", folder_path: str = "") -> List[str]:
-    """作品名、パス、フォルダ名から検索クエリのバリエーションを生成"""
+def generate_query_candidates(name: str, path: str = "", folder_path: str = "", author: str = "") -> List[str]:
+    """作品名、パス、フォルダ名、作者情報から高精度な検索クエリのバリエーションを生成"""
     candidates = []
     
-    # 1. RJ/VJ番号
+    # 1. RJ/VJ/BJ番号（最高精度・固有ID）
     combined = f"{name} {path} {folder_path}"
-    m_rj = re.findall(r'\b(RJ|VJ)\d{6,8}\b', combined, re.IGNORECASE)
+    m_rj = re.findall(r'\b(RJ|VJ|BJ)\d{6,8}\b', combined, re.IGNORECASE)
     for rj in m_rj:
         if rj.upper() not in candidates:
             candidates.append(rj.upper())
 
+    clean_author = author.strip() if author and author != "不明" else ""
+
     # 2. サークル名や角括弧・丸括弧を除去したクリーンタイトル
     clean1 = re.sub(r'\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）', '', name)
     clean1 = re.sub(r'[-_ ]*(v|ver|version)?[._ ]*\d+(\.\d+)+.*', '', clean1, flags=re.IGNORECASE).strip()
+
+    # 作品名 + 作者名の組み合わせ（作品名が被る場合の一致精度を大幅向上）
+    if clean1 and clean_author:
+        q_author_title = f"{clean1} {clean_author}"
+        if q_author_title not in candidates:
+            candidates.append(q_author_title)
+
     if clean1 and clean1 not in candidates:
         candidates.append(clean1)
 
@@ -44,6 +53,8 @@ def generate_query_candidates(name: str, path: str = "", folder_path: str = "") 
         if sep in clean1:
             part = clean1.split(sep)[0].strip()
             if part and len(part) >= 2 and part not in candidates:
+                if clean_author:
+                    candidates.append(f"{part} {clean_author}")
                 candidates.append(part)
 
     # 4. 元の名前そのまま
@@ -58,10 +69,10 @@ def generate_query_candidates(name: str, path: str = "", folder_path: str = "") 
         if clean_f and clean_f not in candidates:
             candidates.append(clean_f)
 
-    # 6. exeのファイル名本体
+    # 6. exeのファイル名本体（汎用名を除く）
     if path:
         stem = Path(path).stem
-        if stem.lower() not in ["game", "start", "main", "play", "app", "launch"]:
+        if stem.lower() not in ["game", "start", "main", "play", "app", "launch", "rpg_rt", "nw"]:
             if stem not in candidates:
                 candidates.append(stem)
 
@@ -350,6 +361,8 @@ class IconHelper:
         local_ill = game_data.get("local_illustration")
         rj_code = game_data.get("rj_code")
 
+        author = game_data.get("author", "")
+
         # 1. ユーザー手動指定
         if preferred_icon_path and os.path.exists(preferred_icon_path) and "cache" not in preferred_icon_path:
             return preferred_icon_path, QUALITY_LOCAL_ORIGINAL
@@ -368,10 +381,19 @@ class IconHelper:
 
         # 4. DLsite公式サムネイル探索（クエリバリエーションを網羅）
         if allow_web_search:
-            queries = generate_query_candidates(name, exe_path, folder_path)
+            # RJコードが明示されている場合は最優先で直接取得
+            if rj_code and re.match(r'^(RJ|VJ|BJ)\d+$', rj_code, re.IGNORECASE):
+                dlsite_img_url = self.fetch_dlsite_thumbnail_by_rj(rj_code)
+                if dlsite_img_url:
+                    img = self.download_image(dlsite_img_url)
+                    if img:
+                        saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                        return saved_path, QUALITY_DLSITE_OFFICIAL
+
+            queries = generate_query_candidates(name, exe_path, folder_path, author=author)
             for q in queries:
                 dlsite_img_url = None
-                if re.match(r'^(RJ|VJ)\d+$', q, re.IGNORECASE):
+                if re.match(r'^(RJ|VJ|BJ)\d+$', q, re.IGNORECASE):
                     dlsite_img_url = self.fetch_dlsite_thumbnail_by_rj(q)
                 else:
                     dlsite_img_url = self.search_dlsite_thumbnail_by_query(q)

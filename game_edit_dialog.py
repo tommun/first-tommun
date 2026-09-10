@@ -24,6 +24,7 @@ class GameEditDialog(ctk.CTkToplevel):
         self.title("＋ アプリ・ゲームを追加" if is_new else "✏️ ゲーム情報の編集")
         self.geometry("640x580")
         self.minsize(580, 520)
+        self.configure(fg_color="#080617")
 
         self.grab_set()
         self.focus_set()
@@ -35,12 +36,23 @@ class GameEditDialog(ctk.CTkToplevel):
         self._update_icon_preview()
 
     def _build_ui(self):
-        main_frame = ctk.CTkFrame(self, corner_radius=12)
+        main_frame = ctk.CTkFrame(
+            self,
+            corner_radius=16,
+            fg_color="#121028",
+            border_width=1,
+            border_color="#221e4a"
+        )
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         # タイトル
         title_text = "＋ 新しいアプリ・ゲームの登録" if not self.game_data.get("id") else "✏️ ゲーム情報の編集"
-        ctk.CTkLabel(main_frame, text=title_text, font=get_mac_font(size=18, weight="bold")).pack(anchor="w", padx=15, pady=(15, 15))
+        ctk.CTkLabel(
+            main_frame,
+            text=title_text,
+            font=get_mac_font(size=18, weight="bold"),
+            text_color="#ffffff"
+        ).pack(anchor="w", padx=15, pady=(15, 15))
 
         # フォームグリッド
         form_frame = ctk.CTkFrame(main_frame, fg_color="transparent")

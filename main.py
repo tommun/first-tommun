@@ -38,14 +38,16 @@ class ModernLauncherApp(ctk.CTk):
         self.config_mgr = ConfigManager()
         self.icon_helper = IconHelper()
 
-        self.title("🎮 Game & EXE Launcher")
-        window_w = self.config_mgr.config.get("settings", {}).get("window_width", 1120)
-        window_h = self.config_mgr.config.get("settings", {}).get("window_height", 740)
+        self.title("🎵 GameLauncher - DLsite Sound Style")
+        window_w = self.config_mgr.config.get("settings", {}).get("window_width", 1140)
+        window_h = self.config_mgr.config.get("settings", {}).get("window_height", 760)
         self.geometry(f"{window_w}x{window_h}")
-        self.minsize(800, 500)
+        self.minsize(840, 520)
+        self.configure(fg_color="#080617")  # DLsite Sound Midnight Dark
 
         # 状態変数
         self.current_category = "すべて"
+        self.current_author = "すべての作者・サークル"
         self.search_query = ""
         self.sort_order = "作品名 (昇順)"  # 作品名 (昇順), 作者・サークル名 (昇順), 登録順
         self.card_images = {}      # CTkImageのキャッシュ保持用
@@ -67,43 +69,74 @@ class ModernLauncherApp(ctk.CTk):
         self.after(200, self._initial_check_and_load)
 
     def _build_ui(self):
-        # 1. 最上部ヘッダー
-        self.header_frame = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=("gray90", "gray14"))
+        # 1. 最上部ヘッダー (DLsite Sound midnight bar with subtle border)
+        self.header_frame = ctk.CTkFrame(
+            self,
+            height=68,
+            corner_radius=0,
+            fg_color="#100e24",
+            border_width=1,
+            border_color="#1f1b40"
+        )
         self.header_frame.pack(fill="x", side="top")
 
-        # タイトルロゴ（Macフォント）
-        logo_lbl = ctk.CTkLabel(
-            self.header_frame,
-            text="🎮 GameLauncher",
-            font=get_mac_font(size=20, weight="bold")
-        )
-        logo_lbl.pack(side="left", padx=20)
+        # タイトルロゴ（DLsite Sound / Mac風モダンラウンドタイポグラフィ）
+        logo_container = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        logo_container.pack(side="left", padx=(20, 10))
 
-        # リアルタイム検索バー（Macスタイル・角丸）
+        logo_badge = ctk.CTkLabel(
+            logo_container,
+            text="SOUND",
+            font=get_mac_font(size=9, weight="bold"),
+            text_color="#080617",
+            fg_color="#77aaf6",
+            corner_radius=4,
+            width=46,
+            height=18
+        )
+        logo_badge.pack(side="left", padx=(0, 8))
+
+        logo_lbl = ctk.CTkLabel(
+            logo_container,
+            text="GameLauncher",
+            font=get_mac_font(size=18, weight="bold"),
+            text_color="#ffffff"
+        )
+        logo_lbl.pack(side="left")
+
+        # リアルタイム検索バー（DLsite Sound ピル型検索バー）
         self.search_entry = ctk.CTkEntry(
             self.header_frame,
-            placeholder_text="🔍 ゲーム・アプリを即座に検索... (Enterで先頭起動)",
+            placeholder_text="🔍 作品名・作者・サークル名で検索... (Enterで即起動)",
+            placeholder_text_color="#737099",
+            text_color="#ffffff",
+            fg_color="#181533",
+            border_color="#2c2858",
+            border_width=1,
             width=360,
-            height=36,
-            corner_radius=18,
-            font=get_mac_font(size=13)
+            height=38,
+            corner_radius=19,
+            font=get_mac_font(size=12)
         )
         self.search_entry.pack(side="left", padx=15, fill="x", expand=True)
         self.search_entry.bind("<KeyRelease>", self._on_search_changed)
         self.search_entry.bind("<Return>", self._on_search_enter)
 
-        # アクションボタン群
+        # アクションボタン群 (DLsite Sound ネオンブルー/エメラルド/スレート)
         btn_container = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         btn_container.pack(side="right", padx=15)
 
         self.optimize_btn = ctk.CTkButton(
             btn_container,
-            text="✨ サムネ最適化中",
-            width=120,
+            text="✨ サムネ最適化",
+            width=110,
             height=34,
-            corner_radius=8,
-            fg_color="#4361ee",
-            hover_color="#3a0ca3",
+            corner_radius=17,
+            fg_color="#2c2759",
+            hover_color="#3a3473",
+            text_color="#77aaf6",
+            border_width=1,
+            border_color="#453e8c",
             font=get_mac_font(size=11, weight="bold"),
             command=self._trigger_optimize_now
         )
@@ -114,9 +147,10 @@ class ModernLauncherApp(ctk.CTk):
             text="＋ 追加",
             width=80,
             height=34,
-            corner_radius=8,
-            fg_color="#2b7a4b",
-            hover_color="#1e5835",
+            corner_radius=17,
+            fg_color="#3a86ff",
+            hover_color="#2b68cb",
+            text_color="#ffffff",
             font=get_mac_font(size=12, weight="bold"),
             command=self._open_add_dialog
         )
@@ -125,11 +159,14 @@ class ModernLauncherApp(ctk.CTk):
         self.folder_btn = ctk.CTkButton(
             btn_container,
             text="📁 フォルダ管理",
-            width=110,
+            width=114,
             height=34,
-            corner_radius=8,
-            fg_color="#1f538d",
-            hover_color="#163e69",
+            corner_radius=17,
+            fg_color="#1e1a3d",
+            hover_color="#2a2554",
+            text_color="#e2e0ff",
+            border_width=1,
+            border_color="#36306e",
             font=get_mac_font(size=12, weight="bold"),
             command=self._open_folder_manager
         )
@@ -138,43 +175,46 @@ class ModernLauncherApp(ctk.CTk):
         self.theme_btn = ctk.CTkButton(
             btn_container,
             text="🌓",
-            width=38,
+            width=36,
             height=34,
-            corner_radius=8,
-            fg_color="gray30",
-            hover_color="gray40",
+            corner_radius=17,
+            fg_color="#181533",
+            hover_color="#25214e",
+            text_color="#a5a1c9",
+            border_width=1,
+            border_color="#2c2858",
             font=get_mac_font(size=13),
             command=self._toggle_theme
         )
         self.theme_btn.pack(side="left", padx=4)
 
-        # 2. カテゴリ選択バー
-        self.cat_frame = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=("gray95", "gray12"))
+        # 2. カテゴリ選択バー (DLsite Sound カプセル・タブ)
+        self.cat_frame = ctk.CTkFrame(self, height=48, corner_radius=0, fg_color="#0b081e")
         self.cat_frame.pack(fill="x", side="top", padx=15, pady=(8, 0))
 
         self._refresh_category_bar()
 
         # 3. メイングリッドエリア（スクロール可能）
-        self.scroll_canvas = ctk.CTkScrollableFrame(self, corner_radius=12, fg_color="transparent")
-        self.scroll_canvas.pack(fill="both", expand=True, padx=15, pady=10)
+        self.scroll_canvas = ctk.CTkScrollableFrame(self, corner_radius=14, fg_color="#080617")
+        self.scroll_canvas.pack(fill="both", expand=True, padx=15, pady=8)
 
         # 4. 最下部ステータスバー
-        self.footer_bar = ctk.CTkFrame(self, height=28, corner_radius=0, fg_color=("gray90", "gray15"))
+        self.footer_bar = ctk.CTkFrame(self, height=28, corner_radius=0, fg_color="#100e24")
         self.footer_bar.pack(fill="x", side="bottom")
 
         self.status_lbl = ctk.CTkLabel(
             self.footer_bar,
             text="準備完了",
             font=get_mac_font(size=11),
-            text_color="gray60"
+            text_color="#77aaf6"
         )
         self.status_lbl.pack(side="left", padx=15)
 
         self.dnd_lbl = ctk.CTkLabel(
             self.footer_bar,
-            text="※ exeやフォルダをウィンドウにドラッグ＆ドロップして即登録できます",
+            text="※ exeやフォルダをドラッグ＆ドロップして即座にライブラリ登録できます",
             font=get_mac_font(size=11),
-            text_color="gray50"
+            text_color="#737099"
         )
         self.dnd_lbl.pack(side="right", padx=15)
 
@@ -229,41 +269,103 @@ class ModernLauncherApp(ctk.CTk):
         for w in self.cat_frame.winfo_children():
             w.destroy()
 
+        # 左側：カテゴリピルボタン
+        cat_box = ctk.CTkFrame(self.cat_frame, fg_color="transparent")
+        cat_box.pack(side="left", fill="y")
+
         categories = self.config_mgr.categories
         for cat in categories:
             is_active = (cat == self.current_category)
             btn = ctk.CTkButton(
-                self.cat_frame,
+                cat_box,
                 text=cat,
-                width=80,
-                height=30,
-                corner_radius=8,
-                fg_color="#1f538d" if is_active else ("gray80", "gray22"),
-                hover_color="#163e69" if is_active else ("gray70", "gray30"),
-                text_color="white" if is_active else ("gray10", "gray80"),
+                width=84,
+                height=32,
+                corner_radius=16,
+                fg_color="#3a86ff" if is_active else "#181533",
+                hover_color="#2b68cb" if is_active else "#25214e",
+                text_color="#ffffff" if is_active else "#9e9abf",
+                border_width=0 if is_active else 1,
+                border_color="#2c2858",
                 font=get_mac_font(size=12, weight="bold" if is_active else "normal"),
                 command=lambda c=cat: self._select_category(c)
             )
-            btn.pack(side="left", padx=4, pady=6)
+            btn.pack(side="left", padx=4, pady=8)
 
-        # ソート選択メニュー (右端配置)
-        sort_container = ctk.CTkFrame(self.cat_frame, fg_color="transparent")
-        sort_container.pack(side="right", padx=6, pady=6)
+        # 右側コントロール群（作者絞り込み ＋ ソートメニュー）
+        right_controls = ctk.CTkFrame(self.cat_frame, fg_color="transparent")
+        right_controls.pack(side="right", padx=6, pady=8)
 
-        sort_lbl = ctk.CTkLabel(sort_container, text="並び替え:", font=get_mac_font(size=11, weight="bold"), text_color="gray60")
-        sort_lbl.pack(side="left", padx=(0, 6))
+        # 1. 作者・サークル絞り込みメニュー
+        author_lbl = ctk.CTkLabel(
+            right_controls,
+            text="👤 サークル:",
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#77aaf6"
+        )
+        author_lbl.pack(side="left", padx=(0, 4))
+
+        # 登録ゲームから作者一覧を抽出
+        authors = set()
+        for g in self.config_mgr.games:
+            a = g.get("author")
+            if a and a != "不明":
+                authors.add(a)
+        author_list = ["すべての作者・サークル"] + sorted(list(authors), key=lambda s: s.lower())
+
+        if self.current_author not in author_list:
+            self.current_author = "すべての作者・サークル"
+
+        self.author_menu = ctk.CTkOptionMenu(
+            right_controls,
+            values=author_list,
+            width=180,
+            height=32,
+            corner_radius=16,
+            fg_color="#181533",
+            button_color="#2c2759",
+            button_hover_color="#3a3473",
+            dropdown_fg_color="#181533",
+            dropdown_hover_color="#2c2759",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff",
+            font=get_mac_font(size=11),
+            command=self._on_author_filter_changed
+        )
+        self.author_menu.set(self.current_author)
+        self.author_menu.pack(side="left", padx=(0, 14))
+
+        # 2. ソート選択メニュー
+        sort_lbl = ctk.CTkLabel(
+            right_controls,
+            text="並び替え:",
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#77aaf6"
+        )
+        sort_lbl.pack(side="left", padx=(0, 4))
 
         sort_menu = ctk.CTkOptionMenu(
-            sort_container,
+            right_controls,
             values=["作品名 (昇順)", "作者・サークル名 (昇順)", "登録順"],
             width=160,
-            height=30,
-            corner_radius=8,
+            height=32,
+            corner_radius=16,
+            fg_color="#181533",
+            button_color="#2c2759",
+            button_hover_color="#3a3473",
+            dropdown_fg_color="#181533",
+            dropdown_hover_color="#2c2759",
+            dropdown_text_color="#ffffff",
+            text_color="#ffffff",
             font=get_mac_font(size=11),
             command=self._on_sort_changed
         )
         sort_menu.set(self.sort_order)
         sort_menu.pack(side="left")
+
+    def _on_author_filter_changed(self, choice: str):
+        self.current_author = choice
+        self.refresh_games()
 
     def _on_sort_changed(self, choice: str):
         self.sort_order = choice
@@ -348,10 +450,18 @@ class ModernLauncherApp(ctk.CTk):
         filtered = []
 
         for g in all_games:
+            # 1. カテゴリ絞り込み
             if self.current_category != "すべて":
                 if g.get("category") != self.current_category:
                     continue
 
+            # 2. 作者・サークル絞り込み
+            if self.current_author != "すべての作者・サークル":
+                g_author = g.get("author", "不明")
+                if g_author != self.current_author:
+                    continue
+
+            # 3. リアルタイム検索クエリ絞り込み
             if self.search_query:
                 name = g.get("name", "").lower()
                 author = g.get("author", "").lower()
@@ -383,6 +493,20 @@ class ModernLauncherApp(ctk.CTk):
 
         self.card_images.clear()
         self.card_widgets.clear()
+
+        # 作者リストの動的更新
+        if hasattr(self, "author_menu"):
+            authors = set()
+            for g in self.config_mgr.games:
+                a = g.get("author")
+                if a and a != "不明":
+                    authors.add(a)
+            author_list = ["すべての作者・サークル"] + sorted(list(authors), key=lambda s: s.lower())
+            self.author_menu.configure(values=author_list)
+            if self.current_author not in author_list:
+                self.current_author = "すべての作者・サークル"
+                self.author_menu.set(self.current_author)
+
         filtered = self._get_filtered_games()
 
         # 同一ゲームグループの解析
@@ -414,10 +538,18 @@ class ModernLauncherApp(ctk.CTk):
             self._create_game_tile(self.scroll_canvas, game, row, col)
 
     def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
-        """Macスタイルの洗練されたカードウィジェットを生成"""
+        """DLsite Sound スタイルの洗練されたカードウィジェットを生成"""
         game_id = game.get("id")
-        # カードサイズ（ゆとりのある高さに調整）
-        card = ctk.CTkFrame(parent, corner_radius=14, fg_color=("gray85", "gray18"), width=196, height=270)
+        # DLsite Sound カード (丸み 16, 深い夜空色 #14112e, 微細境界線 #25204d)
+        card = ctk.CTkFrame(
+            parent,
+            corner_radius=16,
+            fg_color="#14112e",
+            border_width=1,
+            border_color="#25204d",
+            width=200,
+            height=274
+        )
         card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
         card.grid_propagate(False)
 
@@ -437,28 +569,30 @@ class ModernLauncherApp(ctk.CTk):
             game["icon_quality"] = quality
             self.config_mgr.save()
 
-        # PIL画像からCTkImage生成
+        # PIL画像からCTkImage生成 (DLsite Sound アートワークサイズ 114x114)
         try:
             pil_img = Image.open(resolved_icon).convert("RGBA")
-            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(108, 108))
+            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(114, 114))
             self.card_images[game_id] = ctk_img
         except Exception:
             ctk_img = None
 
         # トップバー（サムネイル確定ロックボタン ＆ 重複バッジ）
         top_bar = ctk.CTkFrame(card, fg_color="transparent", height=24)
-        top_bar.pack(fill="x", padx=6, pady=(6, 0))
+        top_bar.pack(fill="x", padx=8, pady=(8, 2))
 
         is_locked = game.get("icon_locked", False)
         lock_btn = ctk.CTkButton(
             top_bar,
             text="🔒 確定済" if is_locked else "🔓 自動探索中",
-            width=76,
+            width=78,
             height=20,
-            corner_radius=6,
-            fg_color="#2b7a4b" if is_locked else ("gray75", "gray28"),
-            hover_color="#1e5835" if is_locked else ("gray65", "gray38"),
-            text_color="white" if is_locked else ("gray30", "gray80"),
+            corner_radius=10,
+            fg_color="#1b7a32" if is_locked else "#1e1a3d",
+            hover_color="#239a40" if is_locked else "#2a2554",
+            text_color="#ffffff" if is_locked else "#77aaf6",
+            border_width=0 if is_locked else 1,
+            border_color="#36306e",
             font=get_mac_font(size=9, weight="bold"),
             command=lambda g=game: self._toggle_icon_lock(g)
         )
@@ -469,70 +603,77 @@ class ModernLauncherApp(ctk.CTk):
             dup_btn = ctk.CTkButton(
                 top_bar,
                 text=f"🔁 重複 {dup_count}",
-                width=64,
+                width=66,
                 height=20,
-                corner_radius=6,
-                fg_color="#b8860b",
-                hover_color="#8c6609",
+                corner_radius=10,
+                fg_color="#9e6d00",
+                hover_color="#b88002",
+                text_color="#ffffff",
                 font=get_mac_font(size=9, weight="bold"),
                 command=lambda k=group_key: self._open_comparison_dialog(k)
             )
             dup_btn.pack(side="right")
 
-        # アイコンボタン
+        # アイコンボタン (ジャケット画像フレーム)
+        img_frame = ctk.CTkFrame(card, corner_radius=12, fg_color="#0d0a20", border_width=1, border_color="#201b44")
+        img_frame.pack(pady=(2, 4), padx=10)
+
         icon_btn = ctk.CTkButton(
-            card,
+            img_frame,
             image=ctk_img,
             text="",
             width=116,
             height=116,
-            corner_radius=10,
+            corner_radius=12,
             fg_color="transparent",
-            hover_color=("gray75", "gray28"),
+            hover_color="#211c47",
             command=lambda g=game: self._launch_game(g)
         )
-        icon_btn.pack(pady=(4, 2))
+        icon_btn.pack()
 
-        # ゲームタイトル表示（Macフォント）
+        # 作品名（DLsite Sound / Mac Rounded タイトル表示）
         name = game.get("name", "Game")
         name_lbl = ctk.CTkLabel(
             card,
             text=name,
             font=get_mac_font(size=12, weight="bold"),
-            wraplength=176,
+            text_color="#ffffff",
+            wraplength=180,
             cursor="hand2"
         )
-        name_lbl.pack(padx=6, pady=(0, 2))
+        name_lbl.pack(padx=8, pady=(0, 2))
         name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
 
-        # 作者・サークル名表示
+        # 作者・サークル名表示 (DLsite Sound パステルバイオレット)
         author_text = f"👤 {game.get('author', '不明')}"
         author_lbl = ctk.CTkLabel(
             card,
             text=author_text,
             font=get_mac_font(size=10),
-            text_color=("gray40", "gray65"),
-            wraplength=176
+            text_color="#8d89b0",
+            wraplength=180
         )
-        author_lbl.pack(padx=6, pady=(0, 4))
+        author_lbl.pack(padx=8, pady=(0, 4))
 
-        # ファイルの場所確認・フォルダを開くボタン
+        # ファイルの場所確認・フォルダを開くボタン (DLsite Sound mini player aesthetic)
         folder_btn = ctk.CTkButton(
             card,
             text="📂 フォルダを開く",
-            width=120,
+            width=128,
             height=22,
-            corner_radius=6,
-            fg_color=("gray75", "gray25"),
-            hover_color=("gray65", "gray35"),
-            text_color=("gray20", "gray85"),
+            corner_radius=11,
+            fg_color="#1a1738",
+            hover_color="#272252",
+            text_color="#a5a1c9",
+            border_width=1,
+            border_color="#2c2759",
             font=get_mac_font(size=10),
             command=lambda g=game: self._open_game_folder(g)
         )
-        folder_btn.pack(pady=(0, 6))
+        folder_btn.pack(pady=(0, 8))
 
         # 右クリックメニューのバインド
-        for w in [card, icon_btn, name_lbl, author_lbl]:
+        for w in [card, img_frame, icon_btn, name_lbl, author_lbl]:
             w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
 
         self.card_widgets[game_id] = {
@@ -592,12 +733,14 @@ class ModernLauncherApp(ctk.CTk):
             is_locked = game["icon_locked"]
             self.card_widgets[game_id]["lock_btn"].configure(
                 text="🔒 確定済" if is_locked else "🔓 自動探索中",
-                fg_color="#2b7a4b" if is_locked else ("gray75", "gray28"),
-                hover_color="#1e5835" if is_locked else ("gray65", "gray38"),
-                text_color="white" if is_locked else ("gray30", "gray80")
+                fg_color="#1b7a32" if is_locked else "#1e1a3d",
+                hover_color="#239a40" if is_locked else "#2a2554",
+                text_color="#ffffff" if is_locked else "#77aaf6",
+                border_width=0 if is_locked else 1,
+                border_color="#36306e"
             )
         status_msg = "🔒 サムネイルを確定しました" if game["icon_locked"] else "🔓 サムネイル自動最適化を再開しました"
-        self.status_lbl.configure(text=f"{status_msg}: {game.get('name')}", text_color="#2b7a4b" if game['icon_locked'] else "#4361ee")
+        self.status_lbl.configure(text=f"{status_msg}: {game.get('name')}", text_color="#77aaf6" if game['icon_locked'] else "#4361ee")
 
     def _show_context_menu(self, event, game: Dict[str, Any]):
         """右クリックコンテキストメニュー（Macフォント適用）"""
