@@ -3,6 +3,7 @@ import sys
 import time
 import subprocess
 import threading
+import webbrowser
 import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
@@ -26,12 +27,13 @@ from icon_picker_dialog import IconPickerDialog
 from folder_manager_dialog import FolderManagerDialog
 from game_edit_dialog import GameEditDialog
 from font_manager import get_mac_font, get_mac_font_family
+from dlsite_metadata import DLsiteMetadataFetcher
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class ModernLauncherApp(ctk.CTk):
-    """DLsite Sound スタイル (Image 2 準拠) ＋ 全画面対応 ＋ レスポンシブグリッド exeランチャー"""
+    """DLsite Sound スタイル ＋ 公式スクレイピングジャンル・タグ識別 ＋ 全画面対応 exeランチャー"""
 
     def __init__(self):
         super().__init__()
@@ -132,7 +134,7 @@ class ModernLauncherApp(ctk.CTk):
         self.header_frame.pack(fill="x", side="top")
         self.header_frame.pack_propagate(False)
 
-        # 左側: ロゴ ＆ リアルタイム検索バー
+        # 左側: ロゴ ＆ リアルタイム検索バー (作品名・サークル・ジャンル・タグ検索対応)
         left_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         left_box.pack(side="left", padx=(18, 10), fill="y")
 
@@ -158,13 +160,13 @@ class ModernLauncherApp(ctk.CTk):
 
         self.search_entry = ctk.CTkEntry(
             left_box,
-            placeholder_text="🔍 作品名・作者・サークル名で検索...",
+            placeholder_text="🔍 作品名・作者・ジャンル・タグ（例: アクション, 拘束, ドット）で検索...",
             placeholder_text_color="#737099",
             text_color="#ffffff",
             fg_color="#171233",
             border_color="#2c2357",
             border_width=1,
-            width=280,
+            width=360,
             height=36,
             corner_radius=18,
             font=get_mac_font(size=11)
@@ -173,7 +175,7 @@ class ModernLauncherApp(ctk.CTk):
         self.search_entry.bind("<KeyRelease>", self._on_search_changed)
         self.search_entry.bind("<Return>", self._on_search_enter)
 
-        # 中央: DLsite Sound カプセルナビゲーションバー (Image 2 トップバー再現)
+        # 中央: DLsite Sound カプセルナビゲーションバー
         self.center_nav_frame = ctk.CTkFrame(
             self.header_frame,
             height=40,
@@ -208,7 +210,7 @@ class ModernLauncherApp(ctk.CTk):
             btn.pack(side="left", padx=3, pady=4)
             self.nav_buttons[nav_key] = btn
 
-        # 右側: ツールボタン群 (全画面, 最適化, 追加, フォルダ, テーマ)
+        # 右側: ツールボタン群 (全画面, DLsite同期, 最適化, 追加, フォルダ, テーマ)
         right_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         right_box.pack(side="right", padx=(10, 18), fill="y")
 
@@ -226,12 +228,12 @@ class ModernLauncherApp(ctk.CTk):
             font=get_mac_font(size=11, weight="bold"),
             command=self.toggle_fullscreen
         )
-        self.fullscreen_btn.pack(side="left", padx=4, pady=17)
+        self.fullscreen_btn.pack(side="left", padx=3, pady=17)
 
-        self.optimize_btn = ctk.CTkButton(
+        self.dlsite_sync_btn = ctk.CTkButton(
             right_box,
-            text="✨ サムネ最適化",
-            width=108,
+            text="🌐 DLsite同期",
+            width=98,
             height=34,
             corner_radius=17,
             fg_color="#241e4f",
@@ -240,28 +242,28 @@ class ModernLauncherApp(ctk.CTk):
             border_width=1,
             border_color="#3e337d",
             font=get_mac_font(size=11, weight="bold"),
-            command=self._trigger_optimize_now
+            command=self._trigger_dlsite_sync_all
         )
-        self.optimize_btn.pack(side="left", padx=4, pady=17)
+        self.dlsite_sync_btn.pack(side="left", padx=3, pady=17)
 
         self.add_app_btn = ctk.CTkButton(
             right_box,
             text="＋ 追加",
-            width=76,
+            width=72,
             height=34,
             corner_radius=17,
             fg_color="#3a86ff",
             hover_color="#2b68cb",
             text_color="#ffffff",
-            font=get_mac_font(size=12, weight="bold"),
+            font=get_mac_font(size=11, weight="bold"),
             command=self._open_add_dialog
         )
-        self.add_app_btn.pack(side="left", padx=4, pady=17)
+        self.add_app_btn.pack(side="left", padx=3, pady=17)
 
         self.folder_btn = ctk.CTkButton(
             right_box,
             text="📁 フォルダ",
-            width=90,
+            width=84,
             height=34,
             corner_radius=17,
             fg_color="#1b163b",
@@ -272,7 +274,7 @@ class ModernLauncherApp(ctk.CTk):
             font=get_mac_font(size=11, weight="bold"),
             command=self._open_folder_manager
         )
-        self.folder_btn.pack(side="left", padx=4, pady=17)
+        self.folder_btn.pack(side="left", padx=3, pady=17)
 
         self.theme_btn = ctk.CTkButton(
             right_box,
@@ -288,7 +290,7 @@ class ModernLauncherApp(ctk.CTk):
             font=get_mac_font(size=13),
             command=self._toggle_theme
         )
-        self.theme_btn.pack(side="left", padx=4, pady=17)
+        self.theme_btn.pack(side="left", padx=3, pady=17)
 
         # 2. メインスクロールエリア（DLsite Sound 全画面対応キャンバス）
         self.scroll_canvas = ctk.CTkScrollableFrame(
@@ -312,7 +314,7 @@ class ModernLauncherApp(ctk.CTk):
 
         self.dnd_lbl = ctk.CTkLabel(
             self.footer_bar,
-            text="※ [F11] で全画面表示切り替え | exeやフォルダのドラッグ＆ドロップ登録に対応",
+            text="※ [F11] で全画面表示切り替え | カード右クリックでDLsite商品ページへ直接ジャンプ可能",
             font=get_mac_font(size=11),
             text_color="#737099"
         )
@@ -431,9 +433,6 @@ class ModernLauncherApp(ctk.CTk):
 
     def _on_background_scan_done(self, new_count: int):
         self.status_lbl.configure(text=f"自動スキャン完了: {len(self.config_mgr.games)} 件登録中", text_color="#2b7a4b")
-        for f in self.config_mgr.scan_folders:
-            cat_name = "ゲーム" if "ゲーム" in f else "download"
-            self.config_mgr.add_category(cat_name)
         self.refresh_games()
 
     def _on_search_changed(self, event=None):
@@ -463,13 +462,15 @@ class ModernLauncherApp(ctk.CTk):
         filtered = []
 
         for g in all_games:
-            # 1. カテゴリ絞り込み
+            # 1. カテゴリ／ジャンル／タグ絞り込み
             if self.current_category != "すべて":
                 if self.current_category == "お気に入り":
                     if not g.get("favorite", False) and not g.get("icon_locked", False):
                         continue
                 else:
-                    if g.get("category") != self.current_category:
+                    g_cat = g.get("category") or g.get("genre") or ""
+                    g_tags = g.get("tags", [])
+                    if g_cat != self.current_category and self.current_category not in g_tags:
                         continue
 
             # 2. 作者・サークル絞り込み
@@ -478,16 +479,20 @@ class ModernLauncherApp(ctk.CTk):
                 if g_author != self.current_author:
                     continue
 
-            # 3. リアルタイム検索クエリ絞り込み
+            # 3. リアルタイム検索クエリ絞り込み（作品名、作者、パス、RJコード、ジャンル、タグ全対象）
             if self.search_query:
                 name = g.get("name", "").lower()
                 author = g.get("author", "").lower()
                 path = g.get("path", "").lower()
                 rj = (g.get("rj_code") or "").lower()
+                genre = (g.get("genre") or g.get("category") or "").lower()
+                tags = [t.lower() for t in g.get("tags", [])]
                 if (self.search_query not in name and 
                     self.search_query not in author and 
                     self.search_query not in path and 
-                    self.search_query not in rj):
+                    self.search_query not in rj and
+                    self.search_query not in genre and
+                    not any(self.search_query in t for t in tags)):
                     continue
 
             filtered.append(g)
@@ -531,7 +536,7 @@ class ModernLauncherApp(ctk.CTk):
             return None
 
     def refresh_games(self):
-        """DLsite Sound スタイル (Image 2) のセクション構成 ＋ 全画面レスポンシブグリッドを再描画"""
+        """DLsite Sound スタイル ＋ 公式スクレイピングジャンル ＋ 全画面レスポンシブグリッドを再描画"""
         for w in self.scroll_canvas.winfo_children():
             w.destroy()
 
@@ -546,7 +551,7 @@ class ModernLauncherApp(ctk.CTk):
         if canvas_w < 500:
             canvas_w = max(800, self.winfo_width() - 50)
 
-        # 列幅 約210px + 余白による動的カラム計算（全画面・最大化で右側に余白を残さず埋める）
+        # 列幅 約210px + 余白による動的カラム計算
         cols = max(3, canvas_w // 210)
 
         # 検索中ではない時のみ「最近プレイした作品」および「ジャンル」セクションを表示
@@ -554,12 +559,11 @@ class ModernLauncherApp(ctk.CTk):
 
         if not is_searching and self.current_nav in ["今すぐ遊ぶ", "ライブラリ"]:
             # ============================================================
-            # セクション 1: 最近聴いた作品 / 最近プレイした作品 〉
+            # セクション 1: 最近プレイした作品 〉
             # ============================================================
             recent_games = [g for g in self.config_mgr.games if g.get("last_launched")]
             recent_games.sort(key=lambda x: x.get("last_launched", 0), reverse=True)
             if not recent_games:
-                # まだ起動履歴がない場合は先頭作品をフィーチャー表示
                 recent_games = self.config_mgr.games[:5]
             else:
                 recent_games = recent_games[:5]
@@ -586,7 +590,7 @@ class ModernLauncherApp(ctk.CTk):
                     self._create_recent_card(sec1_row, r_game, 0, idx)
 
             # ============================================================
-            # セクション 2: ジャンル / カテゴリ 〉
+            # セクション 2: 公式スクレイピングジャンル 〉 (フォルダ名ではなく公式ジャンル)
             # ============================================================
             sec2_header = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
             sec2_header.pack(fill="x", padx=10, pady=(6, 10))
@@ -601,27 +605,42 @@ class ModernLauncherApp(ctk.CTk):
             genre_row = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
             genre_row.pack(fill="x", padx=6, pady=(0, 24))
 
-            categories = self.config_mgr.categories
-            for idx, cat in enumerate(categories):
+            # 登録ゲームから公式スクレイピングジャンルを動的に集約
+            dynamic_genres = set()
+            for g in self.config_mgr.games:
+                gen = g.get("genre") or g.get("category")
+                if gen and gen not in ["ゲーム", "download", "すべて"]:
+                    dynamic_genres.add(gen)
+
+            # 主要ジャンル順に並べる
+            genre_order = ["ロールプレイング", "アドベンチャー", "アクション", "シミュレーション", "パズル", "その他"]
+            sorted_genres = [g for g in genre_order if g in dynamic_genres]
+            for g in sorted(list(dynamic_genres)):
+                if g not in sorted_genres:
+                    sorted_genres.append(g)
+
+            categories_to_show = ["すべて"] + sorted_genres + ["お気に入り"]
+
+            for idx, cat in enumerate(categories_to_show):
                 is_active = (cat == self.current_category)
                 genre_card = ctk.CTkButton(
                     genre_row,
                     text=cat,
                     width=135,
-                    height=52,
+                    height=48,
                     corner_radius=14,
                     fg_color="#362963" if is_active else "#161133",
                     hover_color="#493885" if is_active else "#241c52",
                     border_width=2 if is_active else 1,
                     border_color="#77aaf6" if is_active else "#2d245c",
                     text_color="#ffffff" if is_active else "#c0bcd9",
-                    font=get_mac_font(size=13, weight="bold"),
+                    font=get_mac_font(size=12, weight="bold"),
                     command=lambda c=cat: self._select_category(c)
                 )
-                genre_card.pack(side="left", padx=6, pady=4)
+                genre_card.pack(side="left", padx=5, pady=4)
 
         # ============================================================
-        # セクション 3: すべての作品 / 最近の購入 / ライブラリグリッド 〉
+        # セクション 3: すべての作品 / ライブラリグリッド 〉
         # ============================================================
         sec3_header = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
         sec3_header.pack(fill="x", padx=10, pady=(6, 12))
@@ -724,7 +743,7 @@ class ModernLauncherApp(ctk.CTk):
             ).pack(pady=5)
             return
 
-        # レスポンシブグリッドコンテナ（画面幅いっぱいに列ウェイトを設定）
+        # レスポンシブグリッドコンテナ
         grid_container = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
         grid_container.pack(fill="both", expand=True, padx=4, pady=(0, 20))
 
@@ -737,7 +756,7 @@ class ModernLauncherApp(ctk.CTk):
             self._create_game_tile(grid_container, game, row, col)
 
     def _create_recent_card(self, parent, game: Dict[str, Any], row: int, col: int):
-        """「最近プレイした作品」用の大型ワイドジャケットカード (Image 2 上段再現)"""
+        """「最近プレイした作品」用の大型ワイドジャケットカード"""
         game_id = game.get("id")
 
         card = ctk.CTkFrame(
@@ -782,11 +801,16 @@ class ModernLauncherApp(ctk.CTk):
         name_lbl.pack(padx=10, pady=(2, 2), fill="x")
         name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
 
-        # 作者・サークル名
+        # 作者・サークル名 ＋ ジャンルバッジ
         author_text = game.get("author", "不明")
+        genre_text = game.get("genre") or game.get("category", "")
+        author_line = f"👤 {author_text}"
+        if genre_text and genre_text not in ["ゲーム", "download", "その他"]:
+            author_line += f"  [{genre_text}]"
+
         author_lbl = ctk.CTkLabel(
             card,
-            text=author_text,
+            text=author_line,
             font=get_mac_font(size=10),
             text_color="#8d89b0",
             wraplength=190,
@@ -801,10 +825,9 @@ class ModernLauncherApp(ctk.CTk):
             w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
 
     def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
-        """グリッド内のDLsite Soundジャケットカード (Image 2 下段再現)"""
+        """グリッド内のDLsite Soundジャケットカード（公式ジャンル・タグバッジ付き）"""
         game_id = game.get("id")
 
-        # カードフレーム (DLsite Sound midnight #13102b, 微細な夜空境界線 #241e4d)
         card = ctk.CTkFrame(
             parent,
             corner_radius=14,
@@ -840,15 +863,15 @@ class ModernLauncherApp(ctk.CTk):
         )
         icon_btn.pack(fill="both", expand=True)
 
-        # バッジバー (サムネ確定 ＆ 重複)
+        # バッジバー (サムネ確定 ＆ 重複 ＆ DLsiteリンク)
         badge_bar = ctk.CTkFrame(card, fg_color="transparent", height=22)
         badge_bar.pack(fill="x", padx=8, pady=(2, 2))
 
         is_locked = game.get("icon_locked", False)
         lock_btn = ctk.CTkButton(
             badge_bar,
-            text="🔒 確定" if is_locked else "✨ 自動探索",
-            width=68,
+            text="🔒 確定" if is_locked else "✨ 自動",
+            width=58,
             height=18,
             corner_radius=9,
             fg_color="#1b7a32" if is_locked else "#1a1538",
@@ -865,8 +888,8 @@ class ModernLauncherApp(ctk.CTk):
             dup_count = len(self.grouped_games[group_key])
             dup_btn = ctk.CTkButton(
                 badge_bar,
-                text=f"🔁 重複 {dup_count}",
-                width=64,
+                text=f"🔁 {dup_count}",
+                width=46,
                 height=18,
                 corner_radius=9,
                 fg_color="#9e6d00",
@@ -876,6 +899,23 @@ class ModernLauncherApp(ctk.CTk):
                 command=lambda k=group_key: self._open_comparison_dialog(k)
             )
             dup_btn.pack(side="right")
+
+        # DLsiteブラウザリンクボタン
+        dlsite_btn = ctk.CTkButton(
+            badge_bar,
+            text="🌐 DLsite",
+            width=58,
+            height=18,
+            corner_radius=9,
+            fg_color="#1d1742",
+            hover_color="#2c2266",
+            text_color="#9dc2f8",
+            border_width=1,
+            border_color="#392d73",
+            font=get_mac_font(size=9, weight="bold"),
+            command=lambda g=game: self._open_dlsite_page(g)
+        )
+        dlsite_btn.pack(side="right", padx=(0, 4))
 
         # 作品名（2行wrap）
         name = game.get("name", "Game")
@@ -892,11 +932,32 @@ class ModernLauncherApp(ctk.CTk):
         name_lbl.pack(padx=8, pady=(2, 2), fill="x")
         name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
 
+        # 公式ジャンル ＆ タグ表示
+        genre_text = game.get("genre") or game.get("category", "")
+        tags = game.get("tags", [])
+        tag_parts = []
+        if genre_text and genre_text not in ["ゲーム", "download", "その他"]:
+            tag_parts.append(f"🏷️ {genre_text}")
+        if tags:
+            tag_parts.extend(tags[:2])
+
+        if tag_parts:
+            tag_lbl = ctk.CTkLabel(
+                card,
+                text=" • ".join(tag_parts),
+                font=get_mac_font(size=9),
+                text_color="#77aaf6",
+                wraplength=180,
+                justify="left",
+                anchor="w"
+            )
+            tag_lbl.pack(padx=8, pady=(0, 1), fill="x")
+
         # 作者・サークル名
         author_text = game.get("author", "不明")
         author_lbl = ctk.CTkLabel(
             card,
-            text=author_text,
+            text=f"👤 {author_text}",
             font=get_mac_font(size=10),
             text_color="#8d89b0",
             wraplength=180,
@@ -905,7 +966,7 @@ class ModernLauncherApp(ctk.CTk):
         )
         author_lbl.pack(padx=8, pady=(0, 4), fill="x")
 
-        # フォルダを開くボタン (DLsite Sound 洗練された小型ピル)
+        # フォルダを開くボタン
         folder_btn = ctk.CTkButton(
             card,
             text="📂 フォルダを開く",
@@ -964,22 +1025,95 @@ class ModernLauncherApp(ctk.CTk):
                 self.card_widgets[game_id]["icon_btn"].configure(image=new_img)
                 self.status_lbl.configure(text=f"✨ サムネイルを最適化しました: {updated_game.get('name')}", text_color="#4361ee")
 
-    def _trigger_optimize_now(self):
-        self.status_lbl.configure(text="✨ 最適なサムネイルをバックグラウンド探索中...", text_color="#4361ee")
-        threading.Thread(target=self._optimize_all_worker, daemon=True).start()
+    def _trigger_dlsite_sync_all(self):
+        """全ゲームのDLsite情報（公式タイトル・サークル・ジャンル・タグ・ジャケット）を一括同期"""
+        self.status_lbl.configure(text="🌐 全ゲームのDLsite情報（ジャンル・タグ・サークル）を一括取得中...", text_color="#3a86ff")
 
-    def _optimize_all_worker(self):
-        improved_count = 0
-        for game in self.config_mgr.games:
-            cur_q = game.get("icon_quality", 0)
-            if cur_q < QUALITY_DLSITE_OFFICIAL:
-                new_path, new_q = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
-                if new_q > cur_q:
-                    game["icon_path"] = new_path
-                    game["icon_quality"] = new_q
-                    improved_count += 1
-                    self.after(0, lambda g=game: self._apply_improved_icon(g))
-        self.after(0, lambda: self.status_lbl.configure(text=f"✨ 最適化完了: {improved_count} 件のサムネイルを更新しました", text_color="#2b7a4b"))
+        def worker():
+            updated_count = 0
+            for game in self.config_mgr.games:
+                meta = DLsiteMetadataFetcher.get_metadata_for_game(game)
+                if meta:
+                    game["rj_code"] = meta["rj_code"]
+                    game["dlsite_url"] = meta["url"]
+                    game["genre"] = meta["genre"]
+                    game["tags"] = meta["tags"]
+                    game["category"] = meta["genre"]
+
+                    if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
+                        game["name"] = meta["title"]
+                    if game.get("author") in ["不明", None, "", "download"]:
+                        game["author"] = meta["maker"]
+
+                    if meta.get("image_url") and not game.get("icon_locked"):
+                        img = self.icon_helper.download_image(meta["image_url"])
+                        if img:
+                            p = self.icon_helper.cache_image(f"dlsite_{meta['rj_code']}", img)
+                            if p:
+                                game["icon_path"] = p
+                                game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+
+                    updated_count += 1
+                    self.after(0, lambda n=game.get('name'): self.status_lbl.configure(
+                        text=f"🌐 DLsite取得中: {updated_count}件完了 ({n})", text_color="#3a86ff"
+                    ))
+            self.config_mgr.save()
+            self.after(0, lambda: self._on_dlsite_sync_done(updated_count))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_dlsite_sync_done(self, count: int):
+        self.status_lbl.configure(text=f"✨ DLsite情報の同期完了: {count} 件のジャンル・タグ・サークル情報を更新しました", text_color="#2b7a4b")
+        self.refresh_games()
+
+    def _open_dlsite_page(self, game: Dict[str, Any]):
+        """ブラウザで該当ゲームのDLsite商品ページまたは検索ページを開く"""
+        url = game.get("dlsite_url")
+        rj = game.get("rj_code")
+        if not url and rj:
+            url = f"https://www.dlsite.com/maniax/work/=/product_id/{rj}.html"
+        if not url:
+            title = game.get("name", "")
+            enc = urllib.parse.quote(title)
+            url = f"https://www.dlsite.com/maniax/fsr/=/language/jp/keyword/{enc}"
+        webbrowser.open(url)
+        self.status_lbl.configure(text=f"ブラウザでDLsiteページを開きました: {game.get('name')}", text_color="#77aaf6")
+
+    def _fetch_single_game_dlsite_metadata(self, game: Dict[str, Any]):
+        """単体ゲームのDLsite情報を取得・反映"""
+        self.status_lbl.configure(text=f"🌐 DLsiteから情報取得中: {game.get('name')}...", text_color="#3a86ff")
+
+        def worker():
+            meta = DLsiteMetadataFetcher.get_metadata_for_game(game)
+            if meta:
+                game["rj_code"] = meta["rj_code"]
+                game["dlsite_url"] = meta["url"]
+                game["genre"] = meta["genre"]
+                game["tags"] = meta["tags"]
+                game["category"] = meta["genre"]
+
+                if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
+                    game["name"] = meta["title"]
+                if game.get("author") in ["不明", None, "", "download"]:
+                    game["author"] = meta["maker"]
+
+                if meta.get("image_url") and not game.get("icon_locked"):
+                    img = self.icon_helper.download_image(meta["image_url"])
+                    if img:
+                        p = self.icon_helper.cache_image(f"dlsite_{meta['rj_code']}", img)
+                        if p:
+                            game["icon_path"] = p
+                            game["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+                self.config_mgr.save()
+                self.after(0, lambda: self._on_single_dlsite_done(game))
+            else:
+                self.after(0, lambda: self.status_lbl.configure(text=f"DLsite情報が見つかりませんでした: {game.get('name')}", text_color="#d9534f"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_single_dlsite_done(self, game: Dict[str, Any]):
+        self.status_lbl.configure(text=f"✨ DLsite情報を反映しました: {game.get('name')} [{game.get('genre')}]", text_color="#2b7a4b")
+        self.refresh_games()
 
     def _toggle_icon_lock(self, game: Dict[str, Any]):
         cur = game.get("icon_locked", False)
@@ -989,7 +1123,7 @@ class ModernLauncherApp(ctk.CTk):
         if game_id in self.card_widgets and "lock_btn" in self.card_widgets[game_id]:
             is_locked = game["icon_locked"]
             self.card_widgets[game_id]["lock_btn"].configure(
-                text="🔒 確定" if is_locked else "✨ 自動探索",
+                text="🔒 確定" if is_locked else "✨ 自動",
                 fg_color="#1b7a32" if is_locked else "#1a1538",
                 hover_color="#239a40" if is_locked else "#26204f",
                 text_color="#ffffff" if is_locked else "#77aaf6",
@@ -1002,6 +1136,11 @@ class ModernLauncherApp(ctk.CTk):
     def _show_context_menu(self, event, game: Dict[str, Any]):
         menu = tk.Menu(self, tearoff=0, font=(get_mac_font_family(), 10))
         menu.add_command(label="▶ 起動する", command=lambda: self._launch_game(game))
+        menu.add_separator()
+
+        # DLsiteブラウザ連携 & メタデータ更新
+        menu.add_command(label="🌐 DLsite商品ページを開く (ブラウザ)", command=lambda: self._open_dlsite_page(game))
+        menu.add_command(label="🔄 DLsiteから最新情報を取得 (ジャンル/タグ/サークル)", command=lambda: self._fetch_single_game_dlsite_metadata(game))
         menu.add_separator()
 
         group_key = None
