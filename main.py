@@ -1,3 +1,4 @@
+from title_utils import clean_game_name
 import os
 import sys
 import time
@@ -1141,7 +1142,7 @@ class ModernLauncherApp(ctk.CTk):
                         game["tags"] = meta["tags"]
 
                         if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
-                            game["name"] = meta["title"]
+                            game["name"] = clean_game_name(meta["title"])
                         if game.get("author") in ["不明", None, "", "download"]:
                             game["author"] = meta["maker"]
 
@@ -1240,7 +1241,7 @@ class ModernLauncherApp(ctk.CTk):
                 game["tags"] = meta["tags"]
 
                 if game.get("name", "").upper().startswith("RJ") or not game.get("name"):
-                    game["name"] = meta["title"]
+                    game["name"] = clean_game_name(meta["title"])
                 if game.get("author") in ["不明", None, "", "download"]:
                     game["author"] = meta["maker"]
 

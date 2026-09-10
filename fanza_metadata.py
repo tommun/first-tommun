@@ -1,3 +1,4 @@
+from title_utils import clean_game_name
 import os
 import re
 import json
@@ -82,7 +83,7 @@ class FANZAMetadataFetcher:
                     if items:
                         first = items[0]
                         content_id = first.get('content_id', '')
-                        p_title = first.get('title', '')
+                        p_title = clean_game_name(first.get('title', ''))
                         detail_url = first.get('detail_url', '')
                         makers = first.get('makers', [])
                         maker_name = makers[0] if makers else "不明"
@@ -200,7 +201,7 @@ class FANZAPurchaseImporter:
                 continue
 
             content_id = meta.get("content_id", "")
-            title = meta.get("title", val)
+            title = clean_game_name(meta.get("title", val))
             maker = meta.get("maker", "不明")
             genre = meta.get("genre", "その他")
             tags = meta.get("tags", [])

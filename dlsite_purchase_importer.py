@@ -1,3 +1,4 @@
+from title_utils import clean_game_name
 import os
 import re
 import json
@@ -185,7 +186,7 @@ class DLsitePurchaseImporter:
                         if meta.get("maker") and meta["maker"] != "不明":
                             g["author"] = meta["maker"]
                         if g.get("name", "").upper().startswith("RJ") or not g.get("name"):
-                            g["name"] = meta["title"]
+                            g["name"] = clean_game_name(meta["title"])
                         
                         # 公式サムネイル画像に差し替え（ロックされていない場合）
                         if meta.get("image_url") and not g.get("icon_locked"):
@@ -200,7 +201,7 @@ class DLsitePurchaseImporter:
             if not found_local:
                 # ローカルにまだない購入作品を登録（未インストール作品）
                 meta = DLsiteMetadataFetcher.fetch_by_rj(rj)
-                title = meta["title"] if meta else rj
+                title = clean_game_name(meta["title"]) if meta else rj
                 maker = meta["maker"] if meta else "不明"
                 genre = meta["genre"] if meta else "その他"
                 tags = meta["tags"] if meta else []

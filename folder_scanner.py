@@ -1,3 +1,4 @@
+from title_utils import clean_game_name
 import os
 import re
 from pathlib import Path
@@ -37,11 +38,9 @@ IGNORE_IMG_KEYWORDS = [
 ]
 
 def clean_game_title(name: str) -> str:
-    """フォルダ名やexe名から余分な記号や拡張子を整理して綺麗なタイトルにする"""
     title = name.strip()
     title = re.sub(r'\.(exe|zip|rar|7z)$', '', title, flags=re.IGNORECASE)
-    # フォルダ名が RJ01014404 などの場合はそのまま返す
-    return title.strip()
+    return clean_game_name(title)
 
 def extract_rj_code(text: str) -> Optional[str]:
     """テキストからRJ番号/VJ番号（例: RJ01014404）を抽出"""
