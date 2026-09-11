@@ -36,7 +36,7 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class ModernLauncherApp(ctk.CTk):
-    """DLsite Sound スタイル ＋ 3大プラットフォーム区分 (DLsite / FANZA / その他) ＋ 独立ジャンル・タグ識別 exeランチャー"""
+    """Steam ライブラリスタイル ＋ DLsite/FANZA/その他 PCゲームランチャー"""
 
     def __init__(self):
         super().__init__()
@@ -44,12 +44,12 @@ class ModernLauncherApp(ctk.CTk):
         self.config_mgr = ConfigManager()
         self.icon_helper = IconHelper()
 
-        self.title("🎵 GameLauncher - DLsite Sound Style")
-        window_w = self.config_mgr.config.get("settings", {}).get("window_width", 1240)
-        window_h = self.config_mgr.config.get("settings", {}).get("window_height", 800)
+        self.title("Steam")
+        window_w = self.config_mgr.config.get("settings", {}).get("window_width", 1280)
+        window_h = self.config_mgr.config.get("settings", {}).get("window_height", 820)
         self.geometry(f"{window_w}x{window_h}")
-        self.minsize(860, 560)
-        self.configure(fg_color="#09071a")  # DLsite Sound Midnight Dark
+        self.minsize(920, 600)
+        self.configure(fg_color="#171a21")  # Steam Dark Slate
 
         # 状態変数
         self.is_fullscreen = False
@@ -57,9 +57,10 @@ class ModernLauncherApp(ctk.CTk):
         self.current_genre = "すべて"      # "すべて", "ロールプレイング", "アクション", "アドベンチャー", "シミュレーション", etc.
         self.current_author = "すべての作者・サークル"
         self.search_query = ""
-        self.sort_order = "最近プレイした順"  # 最近プレイした順, 作品名 (昇順), 作者・サークル名 (昇順), 登録順
+        self.sort_order = "作品名 (昇順)"  # 作品名 (昇順), 最近プレイした順, 作者・サークル名 (昇順), 登録順
         self.card_images = {}               # cache_key -> CTkImage
         self.card_widgets = {}              # game_id -> Dict of widgets
+        self.sidebar_item_widgets = []      # サイドバー一覧用ウィジェット
         self.grouped_games = {}             # 重複ゲームグループ
         self._last_window_width = 0
         self._resize_timer = None
@@ -92,11 +93,11 @@ class ModernLauncherApp(ctk.CTk):
         if hasattr(self, "fullscreen_btn"):
             self.fullscreen_btn.configure(
                 text="🗗 縮小" if self.is_fullscreen else "⛶ 全画面",
-                fg_color="#3a86ff" if self.is_fullscreen else "#1b163b"
+                fg_color="#2a475e" if self.is_fullscreen else "#1e232d"
             )
         self.status_lbl.configure(
-            text="全画面表示 (F11 または Esc で戻る)" if self.is_fullscreen else "通常ウィンドウ表示",
-            text_color="#77aaf6"
+            text="全画面表示 (F11 または Esc で戻る)" if self.is_fullscreen else "ダウンロード: 完了",
+            text_color="#66c0f4"
         )
         self.after(60, self.refresh_games)
 
@@ -106,8 +107,8 @@ class ModernLauncherApp(ctk.CTk):
             self.is_fullscreen = False
             self.attributes("-fullscreen", False)
             if hasattr(self, "fullscreen_btn"):
-                self.fullscreen_btn.configure(text="⛶ 全画面", fg_color="#1b163b")
-            self.status_lbl.configure(text="通常ウィンドウ表示", text_color="#77aaf6")
+                self.fullscreen_btn.configure(text="⛶ 全画面", fg_color="#1e232d")
+            self.status_lbl.configure(text="ダウンロード: 完了", text_color="#66c0f4")
             self.after(60, self.refresh_games)
 
     def _on_window_configure(self, event):
@@ -125,233 +126,471 @@ class ModernLauncherApp(ctk.CTk):
         self.refresh_games()
 
     def _build_ui(self):
-        # 1. 最上部ヘッダー (DLsite Sound Midnight Navigation Bar)
-        self.header_frame = ctk.CTkFrame(
+        # ============================================================
+        # 1. 最上部: Steam Menu Bar (Steam 表示 フレンド ゲーム ヘルプ)
+        # ============================================================
+        self.top_menu_bar = ctk.CTkFrame(
             self,
-            height=68,
+            height=26,
             corner_radius=0,
-            fg_color="#0d0a22",
+            fg_color="#171a21"
+        )
+        self.top_menu_bar.pack(fill="x", side="top")
+        self.top_menu_bar.pack_propagate(False)
+
+        menu_items = ["Steam", "表示", "フレンド", "ゲーム", "ヘルプ"]
+        for m in menu_items:
+            m_btn = ctk.CTkButton(
+                self.top_menu_bar,
+                text=m,
+                width=46,
+                height=22,
+                corner_radius=0,
+                fg_color="transparent",
+                hover_color="#2a323d",
+                text_color="#b8b6b4",
+                font=get_mac_font(size=10)
+            )
+            m_btn.pack(side="left", padx=1, pady=2)
+
+        # 右側コントロール: お知らせ・アバター・ウィンドウ操作
+        top_right_box = ctk.CTkFrame(self.top_menu_bar, fg_color="transparent")
+        top_right_box.pack(side="right", padx=6, fill="y")
+
+        notif_btn = ctk.CTkButton(
+            top_right_box,
+            text="🔔",
+            width=24,
+            height=20,
+            corner_radius=2,
+            fg_color="transparent",
+            hover_color="#2a323d",
+            font=get_mac_font(size=10)
+        )
+        notif_btn.pack(side="left", padx=2)
+
+        spk_btn = ctk.CTkButton(
+            top_right_box,
+            text="📢",
+            width=24,
+            height=20,
+            corner_radius=2,
+            fg_color="transparent",
+            hover_color="#2a323d",
+            font=get_mac_font(size=10)
+        )
+        spk_btn.pack(side="left", padx=2)
+
+        avatar_btn = ctk.CTkButton(
+            top_right_box,
+            text="🎮 ユーザー",
+            width=70,
+            height=20,
+            corner_radius=2,
+            fg_color="transparent",
+            hover_color="#2a323d",
+            text_color="#66c0f4",
+            font=get_mac_font(size=10, weight="bold")
+        )
+        avatar_btn.pack(side="left", padx=4)
+
+        # ============================================================
+        # 2. メインナビゲーションバー (← → ストア ライブラリ コミュニティ)
+        # ============================================================
+        self.nav_bar = ctk.CTkFrame(
+            self,
+            height=44,
+            corner_radius=0,
+            fg_color="#171d25",
             border_width=1,
-            border_color="#1d1742"
+            border_color="#121418"
         )
-        self.header_frame.pack(fill="x", side="top")
-        self.header_frame.pack_propagate(False)
+        self.nav_bar.pack(fill="x", side="top")
+        self.nav_bar.pack_propagate(False)
 
-        # 左側: ロゴ ＆ リアルタイム検索バー (作品名・サークル・ジャンル・タグ全対応)
-        left_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        left_box.pack(side="left", padx=(18, 10), fill="y")
+        # 左側: 戻る／進む ＆ メインナビタブ
+        nav_left_box = ctk.CTkFrame(self.nav_bar, fg_color="transparent")
+        nav_left_box.pack(side="left", padx=12, fill="y")
 
-        logo_badge = ctk.CTkLabel(
-            left_box,
-            text="SOUND",
-            font=get_mac_font(size=9, weight="bold"),
-            text_color="#080617",
-            fg_color="#77aaf6",
+        back_btn = ctk.CTkButton(
+            nav_left_box,
+            text="←",
+            width=28,
+            height=28,
             corner_radius=4,
-            width=46,
-            height=18
+            fg_color="#1e232d",
+            hover_color="#2a323d",
+            text_color="#8f98a0",
+            font=get_mac_font(size=12, weight="bold")
         )
-        logo_badge.pack(side="left", padx=(0, 6), pady=24)
+        back_btn.pack(side="left", padx=(0, 2), pady=8)
 
-        logo_lbl = ctk.CTkLabel(
-            left_box,
-            text="GameLauncher",
-            font=get_mac_font(size=17, weight="bold"),
+        fwd_btn = ctk.CTkButton(
+            nav_left_box,
+            text="→",
+            width=28,
+            height=28,
+            corner_radius=4,
+            fg_color="#1e232d",
+            hover_color="#2a323d",
+            text_color="#8f98a0",
+            font=get_mac_font(size=12, weight="bold")
+        )
+        fwd_btn.pack(side="left", padx=(0, 14), pady=8)
+
+        # Steam主要タブ (ストア / ライブラリ / コミュニティ)
+        store_tab = ctk.CTkLabel(
+            nav_left_box,
+            text="ストア",
+            font=get_mac_font(size=13, weight="bold"),
+            text_color="#8f98a0",
+            cursor="hand2"
+        )
+        store_tab.pack(side="left", padx=12, pady=10)
+
+        # ライブラリ（アクティブ・Steamブルー下線風）
+        lib_tab_container = ctk.CTkFrame(nav_left_box, fg_color="transparent")
+        lib_tab_container.pack(side="left", padx=12, fill="y")
+        lib_tab = ctk.CTkLabel(
+            lib_tab_container,
+            text="ライブラリ",
+            font=get_mac_font(size=14, weight="bold"),
             text_color="#ffffff"
         )
-        logo_lbl.pack(side="left", padx=(0, 14), pady=20)
+        lib_tab.pack(side="top", pady=(8, 2))
+        lib_underline = ctk.CTkFrame(lib_tab_container, height=3, width=64, fg_color="#1a9fff", corner_radius=1)
+        lib_underline.pack(side="bottom")
 
-        self.search_entry = ctk.CTkEntry(
-            left_box,
-            placeholder_text="🔍 作品名・作者・ジャンル・タグで検索...",
-            placeholder_text_color="#737099",
-            text_color="#ffffff",
-            fg_color="#171233",
-            border_color="#2c2357",
-            border_width=1,
-            width=290,
-            height=36,
-            corner_radius=18,
-            font=get_mac_font(size=11)
+        comm_tab = ctk.CTkLabel(
+            nav_left_box,
+            text="コミュニティ",
+            font=get_mac_font(size=13, weight="bold"),
+            text_color="#8f98a0",
+            cursor="hand2"
         )
-        self.search_entry.pack(side="left", pady=16)
-        self.search_entry.bind("<KeyRelease>", self._on_search_changed)
-        self.search_entry.bind("<Return>", self._on_search_enter)
+        comm_tab.pack(side="left", padx=12, pady=10)
 
-        # 中央: 3大プラットフォーム区分ピルナビゲーション (DLsite / FANZA / その他)
-        self.center_nav_frame = ctk.CTkFrame(
-            self.header_frame,
-            height=40,
-            corner_radius=20,
-            fg_color="#151030",
-            border_width=1,
-            border_color="#2b2257"
+        user_tab = ctk.CTkLabel(
+            nav_left_box,
+            text="USER",
+            font=get_mac_font(size=13, weight="bold"),
+            text_color="#8f98a0",
+            cursor="hand2"
         )
-        self.center_nav_frame.pack(side="left", expand=True, pady=14)
+        user_tab.pack(side="left", padx=12, pady=10)
 
-        self.platform_buttons = {}
-        nav_items = [
-            ("すべて", "🎮 すべて"),
-            ("DLsite", "🔵 DLsite"),
-            ("FANZA", "🟣 FANZA"),
-            ("その他", "⚪ その他"),
-            ("お気に入り", "⭐ お気に入り"),
-        ]
-
-        for plat_key, label in nav_items:
-            is_active = (self.current_platform == plat_key)
-            btn = ctk.CTkButton(
-                self.center_nav_frame,
-                text=label,
-                width=92,
-                height=32,
-                corner_radius=16,
-                fg_color="#3e316d" if is_active else "transparent",
-                hover_color="#4f3f8c" if is_active else "#221a47",
-                text_color="#ffffff" if is_active else "#9d98c2",
-                font=get_mac_font(size=11, weight="bold" if is_active else "normal"),
-                command=lambda k=plat_key: self._on_platform_clicked(k)
-            )
-            btn.pack(side="left", padx=2, pady=4)
-            self.platform_buttons[plat_key] = btn
-
-        # 右側: ツールボタン群 (購入履歴取り込み, DLsite同期, 全画面, フォルダ, 追加)
-        right_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        right_box.pack(side="right", padx=(10, 18), fill="y")
+        # 右側ツールボタン群 (購入履歴同期, フォルダ管理, テーマ, 全画面)
+        nav_right_box = ctk.CTkFrame(self.nav_bar, fg_color="transparent")
+        nav_right_box.pack(side="right", padx=14, fill="y")
 
         self.import_btn = ctk.CTkButton(
-            right_box,
-            text="📥 購入履歴",
-            width=88,
-            height=34,
-            corner_radius=17,
-            fg_color="#2b2266",
-            hover_color="#3d308c",
-            text_color="#ffffff",
+            nav_right_box,
+            text="📥 購入履歴同期",
+            width=108,
+            height=28,
+            corner_radius=4,
+            fg_color="#212b3b",
+            hover_color="#2e3b52",
+            text_color="#c7d5e0",
             border_width=1,
-            border_color="#423499",
+            border_color="#364560",
             font=get_mac_font(size=11, weight="bold"),
             command=self._open_purchase_importer
         )
-        self.import_btn.pack(side="left", padx=3, pady=17)
-
-        self.dlsite_sync_btn = ctk.CTkButton(
-            right_box,
-            text="🌐 ストア同期",
-            width=92,
-            height=34,
-            corner_radius=17,
-            fg_color="#1d1742",
-            hover_color="#2d2366",
-            text_color="#9dc2f8",
-            border_width=1,
-            border_color="#342b6e",
-            font=get_mac_font(size=11, weight="bold"),
-            command=self._trigger_dlsite_sync_all
-        )
-        self.dlsite_sync_btn.pack(side="left", padx=3, pady=17)
-
-        self.fullscreen_btn = ctk.CTkButton(
-            right_box,
-            text="⛶ 全画面",
-            width=80,
-            height=34,
-            corner_radius=17,
-            fg_color="#1b163b",
-            hover_color="#2a225c",
-            text_color="#77aaf6",
-            border_width=1,
-            border_color="#342b6e",
-            font=get_mac_font(size=11, weight="bold"),
-            command=self.toggle_fullscreen
-        )
-        self.fullscreen_btn.pack(side="left", padx=3, pady=17)
-
-        self.add_app_btn = ctk.CTkButton(
-            right_box,
-            text="＋ 追加",
-            width=68,
-            height=34,
-            corner_radius=17,
-            fg_color="#3a86ff",
-            hover_color="#2b68cb",
-            text_color="#ffffff",
-            font=get_mac_font(size=12, weight="bold"),
-            command=self._open_add_dialog
-        )
-        self.add_app_btn.pack(side="left", padx=3, pady=17)
+        self.import_btn.pack(side="left", padx=4, pady=8)
 
         self.folder_btn = ctk.CTkButton(
-            right_box,
-            text="📁 フォルダ",
-            width=80,
-            height=34,
-            corner_radius=17,
-            fg_color="#1b163b",
-            hover_color="#2a225c",
-            text_color="#e2e0ff",
+            nav_right_box,
+            text="📁 フォルダ管理",
+            width=96,
+            height=28,
+            corner_radius=4,
+            fg_color="#212b3b",
+            hover_color="#2e3b52",
+            text_color="#c7d5e0",
             border_width=1,
-            border_color="#342b6e",
+            border_color="#364560",
             font=get_mac_font(size=11, weight="bold"),
             command=self._open_folder_manager
         )
-        self.folder_btn.pack(side="left", padx=3, pady=17)
+        self.folder_btn.pack(side="left", padx=4, pady=8)
+
+        self.fullscreen_btn = ctk.CTkButton(
+            nav_right_box,
+            text="⛶ 全画面",
+            width=76,
+            height=28,
+            corner_radius=4,
+            fg_color="#1e232d",
+            hover_color="#2a323d",
+            text_color="#8f98a0",
+            font=get_mac_font(size=11),
+            command=self.toggle_fullscreen
+        )
+        self.fullscreen_btn.pack(side="left", padx=4, pady=8)
 
         self.theme_btn = ctk.CTkButton(
-            right_box,
+            nav_right_box,
             text="🌓",
-            width=36,
-            height=34,
-            corner_radius=17,
-            fg_color="#171233",
-            hover_color="#251c4e",
-            text_color="#a5a1c9",
-            border_width=1,
-            border_color="#2c2357",
-            font=get_mac_font(size=13),
+            width=32,
+            height=28,
+            corner_radius=4,
+            fg_color="#1e232d",
+            hover_color="#2a323d",
+            text_color="#c7d5e0",
+            font=get_mac_font(size=12),
             command=self._toggle_theme
         )
-        self.theme_btn.pack(side="left", padx=3, pady=17)
+        self.theme_btn.pack(side="left", padx=4, pady=8)
 
-        # 2. メインスクロールエリア（DLsite Sound 全画面対応キャンバス）
-        self.scroll_canvas = ctk.CTkScrollableFrame(
+        # ============================================================
+        # 3. 最下部ステータスバー (Steam Download Status Bar)
+        # ============================================================
+        self.footer_bar = ctk.CTkFrame(
             self,
+            height=26,
             corner_radius=0,
-            fg_color="#09071a"
+            fg_color="#171a21",
+            border_width=1,
+            border_color="#121418"
         )
-        self.scroll_canvas.pack(fill="both", expand=True, padx=20, pady=(10, 4))
-
-        # 3. 最下部ステータスバー
-        self.footer_bar = ctk.CTkFrame(self, height=28, corner_radius=0, fg_color="#0d0a22")
         self.footer_bar.pack(fill="x", side="bottom")
+        self.footer_bar.pack_propagate(False)
 
         self.status_lbl = ctk.CTkLabel(
             self.footer_bar,
-            text="準備完了",
-            font=get_mac_font(size=11),
-            text_color="#77aaf6"
+            text="⬇️ ダウンロード: 完了",
+            font=get_mac_font(size=10),
+            text_color="#66c0f4"
         )
         self.status_lbl.pack(side="left", padx=16)
 
         self.dnd_lbl = ctk.CTkLabel(
             self.footer_bar,
-            text="※ [F11] で全画面表示切り替え | DLsite / FANZA / その他 の3プラットフォーム自動識別対応",
-            font=get_mac_font(size=11),
-            text_color="#737099"
+            text="👥 フレンド＆チャット (オンライン)",
+            font=get_mac_font(size=10),
+            text_color="#8f98a0",
+            cursor="hand2"
         )
         self.dnd_lbl.pack(side="right", padx=16)
 
+        # ============================================================
+        # 4. 本体スプリットコンテナ (左サイドバー ＋ 右メインシェルフ)
+        # ============================================================
+        self.main_split = ctk.CTkFrame(
+            self,
+            corner_radius=0,
+            fg_color="#171a21"
+        )
+        self.main_split.pack(fill="both", expand=True)
+
+        # --- 左ペイン: Steam風ゲームリスト サイドバー (幅260px) ---
+        self.sidebar_frame = ctk.CTkFrame(
+            self.main_split,
+            width=260,
+            corner_radius=0,
+            fg_color="#1e232d",
+            border_width=1,
+            border_color="#121418"
+        )
+        self.sidebar_frame.pack(side="left", fill="y")
+        self.sidebar_frame.pack_propagate(False)
+
+        # サイドバートップ: ホーム／コレクション アイコン ＆ 検索窓
+        sb_top = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        sb_top.pack(fill="x", padx=10, pady=(10, 6))
+
+        # アイコン行 (ホーム, コレクション, 時計)
+        sb_icon_row = ctk.CTkFrame(sb_top, fg_color="transparent")
+        sb_icon_row.pack(fill="x", pady=(0, 6))
+
+        home_btn = ctk.CTkButton(
+            sb_icon_row,
+            text="🏠 ホーム",
+            width=72,
+            height=26,
+            corner_radius=4,
+            fg_color="#283444",
+            hover_color="#364560",
+            text_color="#ffffff",
+            font=get_mac_font(size=10, weight="bold"),
+            command=lambda: self._on_sidebar_filter_all()
+        )
+        home_btn.pack(side="left", padx=(0, 4))
+
+        fav_btn = ctk.CTkButton(
+            sb_icon_row,
+            text="⭐ お気に入り",
+            width=84,
+            height=26,
+            corner_radius=4,
+            fg_color="#1e232d",
+            hover_color="#283444",
+            text_color="#c7d5e0",
+            border_width=1,
+            border_color="#2d3744",
+            font=get_mac_font(size=10),
+            command=lambda: self._on_platform_clicked("お気に入り")
+        )
+        fav_btn.pack(side="left")
+
+        # 検索窓
+        self.search_entry = ctk.CTkEntry(
+            sb_top,
+            placeholder_text="🔍 ゲームを検索...",
+            placeholder_text_color="#626b77",
+            text_color="#c7d5e0",
+            fg_color="#171a21",
+            border_color="#2a323d",
+            border_width=1,
+            height=30,
+            corner_radius=4,
+            font=get_mac_font(size=11)
+        )
+        self.search_entry.pack(fill="x")
+        self.search_entry.bind("<KeyRelease>", self._on_search_changed)
+        self.search_entry.bind("<Return>", self._on_search_enter)
+
+        # サイドバー中央: スクロール可能なツリーリスト
+        self.sidebar_scroll = ctk.CTkScrollableFrame(
+            self.sidebar_frame,
+            corner_radius=0,
+            fg_color="#1e232d"
+        )
+        self.sidebar_scroll.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # サイドバー下部: 「＋ ゲームを追加」ボタン
+        sb_bottom = ctk.CTkFrame(self.sidebar_frame, height=38, corner_radius=0, fg_color="#171a21")
+        sb_bottom.pack(fill="x", side="bottom")
+        sb_bottom.pack_propagate(False)
+
+        self.add_app_btn = ctk.CTkButton(
+            sb_bottom,
+            text="＋ ゲームを追加",
+            height=32,
+            corner_radius=4,
+            fg_color="transparent",
+            hover_color="#283444",
+            text_color="#8f98a0",
+            font=get_mac_font(size=11, weight="bold"),
+            anchor="w",
+            command=self._open_add_dialog
+        )
+        self.add_app_btn.pack(fill="both", padx=10, pady=3)
+
+        # --- 右ペイン: Steamシェルフ メインコンテンツ領域 ---
+        self.scroll_canvas = ctk.CTkScrollableFrame(
+            self.main_split,
+            corner_radius=0,
+            fg_color="#1b2838"  # Steam Classic Navy Blue
+        )
+        self.scroll_canvas.pack(fill="both", expand=True, padx=0, pady=0)
+
+    def _on_sidebar_filter_all(self):
+        self.current_platform = "すべて"
+        self.current_genre = "すべて"
+        self.refresh_games()
+
+    def _on_sidebar_filter_genre(self, genre_name: str):
+        self.current_platform = "すべて"
+        self.current_genre = genre_name
+        self.refresh_games()
+
     def _on_platform_clicked(self, plat_key: str):
         self.current_platform = plat_key
-        for k, btn in self.platform_buttons.items():
-            is_active = (k == plat_key)
-            btn.configure(
-                fg_color="#3e316d" if is_active else "transparent",
-                hover_color="#4f3f8c" if is_active else "#221a47",
-                text_color="#ffffff" if is_active else "#9d98c2",
-                font=get_mac_font(size=11, weight="bold" if is_active else "normal")
-            )
+        self.current_genre = "すべて"
+        if hasattr(self, "platform_buttons") and isinstance(self.platform_buttons, dict):
+            for k, btn in self.platform_buttons.items():
+                is_active = (k == plat_key)
+                btn.configure(
+                    fg_color="#3e316d" if is_active else "transparent",
+                    hover_color="#4f3f8c" if is_active else "#221a47",
+                    text_color="#ffffff" if is_active else "#9d98c2",
+                    font=get_mac_font(size=11, weight="bold" if is_active else "normal")
+                )
         self.refresh_games()
+
+    def _refresh_sidebar(self):
+        """左サイドバーのツリー状ゲームコレクション表示を更新"""
+        if not hasattr(self, "sidebar_scroll"):
+            return
+        for w in self.sidebar_scroll.winfo_children():
+            w.destroy()
+        self.sidebar_item_widgets.clear()
+
+        all_games = self.config_mgr.games
+
+        # 1. お気に入りコレクション
+        fav_games = [g for g in all_games if g.get("favorite", False) or g.get("icon_locked", False)]
+        fav_games.sort(key=lambda x: x.get("name", "").lower())
+        if fav_games:
+            fav_hdr = ctk.CTkFrame(self.sidebar_scroll, fg_color="transparent", height=24)
+            fav_hdr.pack(fill="x", padx=4, pady=(6, 2))
+            ctk.CTkLabel(
+                fav_hdr,
+                text=f"▼ ⭐ お気に入り ({len(fav_games)})",
+                font=get_mac_font(size=10, weight="bold"),
+                text_color="#66c0f4",
+                anchor="w"
+            ).pack(side="left", padx=2)
+
+            for g in fav_games:
+                self._create_sidebar_game_item(self.sidebar_scroll, g)
+
+        # 2. ジャンル別コレクション
+        genre_map: Dict[str, List[Dict[str, Any]]] = {}
+        for g in all_games:
+            gen = g.get("genre") or g.get("category") or "その他"
+            if gen in ["ゲーム", "download"]:
+                gen = "その他"
+            genre_map.setdefault(gen, []).append(g)
+
+        # メインジャンルの優先順
+        genre_order = ["ロールプレイング", "アクション", "アドベンチャー", "シミュレーション", "パズル", "その他"]
+        sorted_genres = [gn for gn in genre_order if gn in genre_map]
+        for gn in sorted(genre_map.keys()):
+            if gn not in sorted_genres:
+                sorted_genres.append(gn)
+
+        for gn in sorted_genres:
+            g_list = genre_map[gn]
+            g_list.sort(key=lambda x: x.get("name", "").lower())
+
+            hdr = ctk.CTkButton(
+                self.sidebar_scroll,
+                text=f"▼ 📁 {gn} ({len(g_list)})",
+                font=get_mac_font(size=10, weight="bold"),
+                text_color="#c7d5e0" if self.current_genre == gn else "#8f98a0",
+                fg_color="#212b3b" if self.current_genre == gn else "transparent",
+                hover_color="#283444",
+                anchor="w",
+                height=22,
+                corner_radius=2,
+                command=lambda gn_name=gn: self._on_sidebar_filter_genre(gn_name)
+            )
+            hdr.pack(fill="x", padx=2, pady=(4, 1))
+
+            for g in g_list:
+                self._create_sidebar_game_item(self.sidebar_scroll, g)
+
+    def _create_sidebar_game_item(self, parent, game: Dict[str, Any]):
+        g_name = game.get("name", "Game")
+        g_item = ctk.CTkButton(
+            parent,
+            text=f"  • {g_name}",
+            font=get_mac_font(size=10),
+            text_color="#8f98a0",
+            hover_color="#283444",
+            fg_color="transparent",
+            anchor="w",
+            height=20,
+            corner_radius=2,
+            command=lambda g=game: self._launch_game(g)
+        )
+        g_item.pack(fill="x", padx=(10, 2), pady=0)
+        g_item.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
+        self.sidebar_item_widgets.append(g_item)
+
 
     def _setup_drag_and_drop(self):
         if HAS_WINDND:
@@ -565,48 +804,48 @@ class ModernLauncherApp(ctk.CTk):
             return None
 
     def refresh_games(self):
-        """DLsite Sound スタイル ＋ プラットフォーム区分 ＋ 独立ジャンル・タグの再描画"""
+        """Steam公式UIスタイル（最近プレイシェルフ ＋ 全ゲームシェルフ ＋ 左サイドバー連動）の描画"""
         for w in self.scroll_canvas.winfo_children():
             w.destroy()
 
         self.card_widgets.clear()
+        self._refresh_sidebar()
 
         filtered = self._get_filtered_games()
         self.grouped_games = GameAnalyzer.group_identical_games(self.config_mgr.games)
-        self.status_lbl.configure(text=f"登録数: {len(self.config_mgr.games)} 件 (表示中: {len(filtered)} 件)")
+        self.status_lbl.configure(text=f"⬇️ ライブラリ: 全 {len(self.config_mgr.games)} 作品 (表示中: {len(filtered)} 件)")
 
-        # 利用可能幅の取得と動的列数 (cols) の算出
         canvas_w = self.scroll_canvas.winfo_width()
         if canvas_w < 500:
-            canvas_w = max(800, self.winfo_width() - 50)
+            canvas_w = max(800, self.winfo_width() - 280)
 
-        cols = max(3, canvas_w // 210)
+        cols = max(3, canvas_w // 205)
         is_searching = bool(self.search_query.strip())
 
-        if not is_searching and self.current_platform in ["すべて", "DLsite"]:
-            # ============================================================
-            # セクション 1: 最近プレイした作品 〉
-            # ============================================================
+        # ============================================================
+        # シェルフ 1: 最近のプレイ (Steam Recent Shelf)
+        # ============================================================
+        if not is_searching and self.current_platform == "すべて" and self.current_genre == "すべて":
             recent_games = [g for g in self.config_mgr.games if g.get("last_launched")]
             recent_games.sort(key=lambda x: x.get("last_launched", 0), reverse=True)
             if not recent_games:
-                recent_games = self.config_mgr.games[:5]
+                recent_games = self.config_mgr.games[:4]
             else:
-                recent_games = recent_games[:5]
+                recent_games = recent_games[:4]
 
             if recent_games:
                 sec1_header = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-                sec1_header.pack(fill="x", padx=10, pady=(8, 12))
+                sec1_header.pack(fill="x", padx=16, pady=(16, 8))
 
                 ctk.CTkLabel(
                     sec1_header,
-                    text="最近プレイした作品 〉",
-                    font=get_mac_font(size=17, weight="bold"),
-                    text_color="#ffffff"
+                    text="最近のプレイ",
+                    font=get_mac_font(size=14, weight="bold"),
+                    text_color="#c7d5e0"
                 ).pack(side="left")
 
                 sec1_row = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-                sec1_row.pack(fill="x", padx=6, pady=(0, 20))
+                sec1_row.pack(fill="x", padx=12, pady=(0, 20))
 
                 recent_cols = min(len(recent_games), cols)
                 for c in range(recent_cols):
@@ -616,144 +855,56 @@ class ModernLauncherApp(ctk.CTk):
                     self._create_recent_card(sec1_row, r_game, 0, idx)
 
         # ============================================================
-        # セクション 2: ゲームジャンル 〉 (プラットフォームとは完全に独立した分類軸)
+        # シェルフ 2: すべてのゲーム / 検索結果 / ジャンル別
         # ============================================================
         sec2_header = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-        sec2_header.pack(fill="x", padx=10, pady=(6, 10))
+        sec2_header.pack(fill="x", padx=16, pady=(8, 8))
+
+        # Steam風ヘッダータイトル
+        if is_searching:
+            header_title = f"検索結果 ({len(filtered)})"
+        elif self.current_genre != "すべて":
+            header_title = f"{self.current_genre} ({len(filtered)})"
+        elif self.current_platform == "お気に入り":
+            header_title = f"お気に入り ({len(filtered)})"
+        else:
+            header_title = f"すべてのゲーム ({len(filtered)})"
 
         ctk.CTkLabel(
             sec2_header,
-            text="ゲームジャンル 〉",
-            font=get_mac_font(size=17, weight="bold"),
-            text_color="#ffffff"
+            text=header_title,
+            font=get_mac_font(size=14, weight="bold"),
+            text_color="#c7d5e0"
         ).pack(side="left")
 
-        genre_row = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-        genre_row.pack(fill="x", padx=6, pady=(0, 20))
-
-        # 登録ゲームから公式ゲームジャンルを動的に集約
-        dynamic_genres = set()
-        for g in self.config_mgr.games:
-            gen = g.get("genre") or g.get("category")
-            if gen and gen not in ["ゲーム", "download", "すべて"]:
-                dynamic_genres.add(gen)
-
-        genre_order = ["ロールプレイング", "アドベンチャー", "アクション", "シミュレーション", "パズル", "その他"]
-        sorted_genres = [g for g in genre_order if g in dynamic_genres]
-        for g in sorted(list(dynamic_genres)):
-            if g not in sorted_genres:
-                sorted_genres.append(g)
-
-        genres_to_show = ["すべて"] + sorted_genres
-
-        for idx, g_name in enumerate(genres_to_show):
-            is_active = (g_name == self.current_genre)
-            g_btn = ctk.CTkButton(
-                genre_row,
-                text=g_name,
-                width=130,
-                height=44,
-                corner_radius=14,
-                fg_color="#362963" if is_active else "#161133",
-                hover_color="#493885" if is_active else "#241c52",
-                border_width=2 if is_active else 1,
-                border_color="#77aaf6" if is_active else "#2d245c",
-                text_color="#ffffff" if is_active else "#c0bcd9",
-                font=get_mac_font(size=12, weight="bold"),
-                command=lambda gn=g_name: self._select_genre(gn)
-            )
-            g_btn.pack(side="left", padx=5, pady=4)
-
-        # ============================================================
-        # セクション 3: 作品一覧グリッド 〉
-        # ============================================================
-        sec3_header = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-        sec3_header.pack(fill="x", padx=10, pady=(6, 12))
-
-        # タイトル表示（プラットフォーム ＋ ジャンル）
-        title_parts = []
-        if self.current_platform != "すべて":
-            title_parts.append(f"[{self.current_platform}]")
-        if self.current_genre != "すべて":
-            title_parts.append(f"「{self.current_genre}」")
-        if not title_parts:
-            title_text = f"すべての作品 〉 ({len(filtered)}件)"
-        else:
-            title_text = f"{' '.join(title_parts)} の作品 〉 ({len(filtered)}件)"
-        if is_searching:
-            title_text = f"検索結果 〉 ({len(filtered)}件)"
+        # 右側コントロール (並び替え / フィルター)
+        sec2_controls = ctk.CTkFrame(sec2_header, fg_color="transparent")
+        sec2_controls.pack(side="right")
 
         ctk.CTkLabel(
-            sec3_header,
-            text=title_text,
-            font=get_mac_font(size=17, weight="bold"),
-            text_color="#ffffff"
-        ).pack(side="left")
-
-        # 右側コントロール（作者絞り込み ＆ ソート）
-        sec3_controls = ctk.CTkFrame(sec3_header, fg_color="transparent")
-        sec3_controls.pack(side="right")
-
-        ctk.CTkLabel(
-            sec3_controls,
-            text="👤 サークル:",
-            font=get_mac_font(size=11, weight="bold"),
-            text_color="#77aaf6"
-        ).pack(side="left", padx=(0, 4))
-
-        authors = set()
-        for g in self.config_mgr.games:
-            a = g.get("author")
-            if a and a != "不明":
-                authors.add(a)
-        author_list = ["すべての作者・サークル"] + sorted(list(authors), key=lambda s: s.lower())
-
-        if self.current_author not in author_list:
-            self.current_author = "すべての作者・サークル"
-
-        self.author_menu = ctk.CTkOptionMenu(
-            sec3_controls,
-            values=author_list,
-            width=175,
-            height=32,
-            corner_radius=16,
-            fg_color="#161233",
-            button_color="#271f54",
-            button_hover_color="#3a2f7a",
-            dropdown_fg_color="#161233",
-            dropdown_hover_color="#271f54",
-            dropdown_text_color="#ffffff",
-            text_color="#ffffff",
-            font=get_mac_font(size=11),
-            command=self._on_author_filter_changed
-        )
-        self.author_menu.set(self.current_author)
-        self.author_menu.pack(side="left", padx=(0, 12))
-
-        ctk.CTkLabel(
-            sec3_controls,
+            sec2_controls,
             text="並び替え:",
-            font=get_mac_font(size=11, weight="bold"),
-            text_color="#77aaf6"
-        ).pack(side="left", padx=(0, 4))
+            font=get_mac_font(size=11),
+            text_color="#8f98a0"
+        ).pack(side="left", padx=(0, 6))
 
         sort_menu = ctk.CTkOptionMenu(
-            sec3_controls,
-            values=["最近プレイした順", "作品名 (昇順)", "作者・サークル名 (昇順)", "登録順"],
-            width=160,
-            height=32,
-            corner_radius=16,
-            fg_color="#161233",
-            button_color="#271f54",
-            button_hover_color="#3a2f7a",
-            dropdown_fg_color="#161233",
-            dropdown_hover_color="#271f54",
-            dropdown_text_color="#ffffff",
-            text_color="#ffffff",
+            sec2_controls,
+            values=["作品名 (昇順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"],
+            width=150,
+            height=26,
+            corner_radius=4,
+            fg_color="#1e232d",
+            button_color="#283444",
+            button_hover_color="#364560",
+            dropdown_fg_color="#1e232d",
+            dropdown_hover_color="#283444",
+            dropdown_text_color="#c7d5e0",
+            text_color="#c7d5e0",
             font=get_mac_font(size=11),
             command=self._on_sort_changed
         )
-        sort_menu.set(self.sort_order)
+        sort_menu.set(self.sort_order if self.sort_order in ["作品名 (昇順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"] else "作品名 (昇順)")
         sort_menu.pack(side="left")
 
         # 0件表示
@@ -762,21 +913,21 @@ class ModernLauncherApp(ctk.CTk):
             empty_box.pack(pady=60)
             ctk.CTkLabel(
                 empty_box,
-                text="該当する作品がありません",
-                font=get_mac_font(size=16, weight="bold"),
-                text_color="gray60"
+                text="該当するゲームがありません",
+                font=get_mac_font(size=15, weight="bold"),
+                text_color="#8f98a0"
             ).pack()
             ctk.CTkLabel(
                 empty_box,
-                text="プラットフォームやジャンルフィルターを変更するか、「📥 購入履歴」から作品を追加してください。",
-                font=get_mac_font(size=12),
-                text_color="gray50"
-            ).pack(pady=5)
+                text="検索条件を変更するか、右上の「📥 購入履歴同期」または「＋ ゲームを追加」から登録してください。",
+                font=get_mac_font(size=11),
+                text_color="#626b77"
+            ).pack(pady=6)
             return
 
-        # レスポンシブグリッドコンテナ
+        # グリッドコンテナ
         grid_container = ctk.CTkFrame(self.scroll_canvas, fg_color="transparent")
-        grid_container.pack(fill="both", expand=True, padx=4, pady=(0, 20))
+        grid_container.pack(fill="both", expand=True, padx=12, pady=(0, 24))
 
         for c in range(cols):
             grid_container.grid_columnconfigure(c, weight=1)
@@ -787,32 +938,123 @@ class ModernLauncherApp(ctk.CTk):
             self._create_game_tile(grid_container, game, row, col)
 
     def _create_recent_card(self, parent, game: Dict[str, Any], row: int, col: int):
-        """「最近プレイした作品」用の大型ワイドジャケットカード"""
+        """「最近のプレイ」用ワイドSteamカード"""
         game_id = game.get("id")
 
         card = ctk.CTkFrame(
             parent,
-            corner_radius=14,
-            fg_color="#13102b",
+            corner_radius=4,
+            fg_color="#131923",
             border_width=1,
-            border_color="#241e4d"
+            border_color="#212b3b"
         )
-        card.grid(row=row, column=col, padx=8, pady=4, sticky="nsew")
+        card.grid(row=row, column=col, padx=6, pady=4, sticky="nsew")
 
-        # ワイドジャケット画像 (200x135)
-        ctk_img = self._get_ctk_image(game, target_size=(200, 135))
+        # ワイドジャケット画像 (200x125)
+        ctk_img = self._get_ctk_image(game, target_size=(200, 125))
 
-        img_frame = ctk.CTkFrame(card, corner_radius=10, fg_color="#0a081a")
-        img_frame.pack(padx=8, pady=(8, 6), fill="x")
+        img_frame = ctk.CTkFrame(card, corner_radius=2, fg_color="#0a0d14")
+        img_frame.pack(padx=6, pady=(6, 6), fill="x")
 
         icon_btn = ctk.CTkButton(
             img_frame,
             image=ctk_img,
             text="",
-            height=135,
-            corner_radius=10,
+            height=125,
+            corner_radius=2,
             fg_color="transparent",
-            hover_color="#221b4a",
+            hover_color="#1b2838",
+            command=lambda g=game: self._launch_game(g)
+        )
+        icon_btn.pack(fill="both", expand=True)
+
+        # ゲームタイトル
+        name = game.get("name", "Game")
+        name_lbl = ctk.CTkLabel(
+            card,
+            text=name,
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#c7d5e0",
+            wraplength=188,
+            justify="left",
+            anchor="w",
+            cursor="hand2"
+        )
+        name_lbl.pack(padx=8, pady=(0, 2), fill="x")
+        name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
+
+        # サークル/作者名
+        author_text = game.get("author", "不明")
+        author_lbl = ctk.CTkLabel(
+            card,
+            text=author_text,
+            font=get_mac_font(size=10),
+            text_color="#8f98a0",
+            wraplength=188,
+            justify="left",
+            anchor="w"
+        )
+        author_lbl.pack(padx=8, pady=(0, 6), fill="x")
+
+        # Steamグリーンプレイボタン
+        is_installed = game.get("is_installed", True if game.get("path") else False)
+        if is_installed:
+            play_btn = ctk.CTkButton(
+                card,
+                text="▶ プレイ",
+                height=26,
+                corner_radius=2,
+                fg_color="#5c7e10",
+                hover_color="#78a317",
+                text_color="#ffffff",
+                font=get_mac_font(size=11, weight="bold"),
+                command=lambda g=game: self._launch_game(g)
+            )
+        else:
+            play_btn = ctk.CTkButton(
+                card,
+                text="⬇️ ダウンロード",
+                height=26,
+                corner_radius=2,
+                fg_color="#1a9fff",
+                hover_color="#3dafff",
+                text_color="#ffffff",
+                font=get_mac_font(size=11, weight="bold"),
+                command=lambda g=game: self._open_store_page(g)
+            )
+        play_btn.pack(fill="x", padx=8, pady=(0, 8))
+
+        self._bind_card_hover(card, [img_frame, icon_btn, name_lbl, author_lbl])
+        for w in [card, img_frame, icon_btn, name_lbl, author_lbl]:
+            w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
+
+    def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
+        """Steamポスターグリッド用ゲームカード"""
+        game_id = game.get("id")
+
+        card = ctk.CTkFrame(
+            parent,
+            corner_radius=4,
+            fg_color="#131923",
+            border_width=1,
+            border_color="#212b3b"
+        )
+        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+
+        # ジャケット画像フレーム (180x120)
+        img_container = ctk.CTkFrame(card, corner_radius=2, fg_color="#0a0d14")
+        img_container.pack(padx=6, pady=(6, 4), fill="x")
+
+        ctk_img = self._get_ctk_image(game, target_size=(180, 120))
+
+        icon_btn = ctk.CTkButton(
+            img_container,
+            image=ctk_img,
+            text="",
+            height=120,
+            corner_radius=2,
+            fg_color="transparent",
+            hover_color="#1b2838",
             command=lambda g=game: self._launch_game(g)
         )
         icon_btn.pack(fill="both", expand=True)
@@ -822,164 +1064,9 @@ class ModernLauncherApp(ctk.CTk):
         name_lbl = ctk.CTkLabel(
             card,
             text=name,
-            font=get_mac_font(size=12, weight="bold"),
-            text_color="#ffffff",
-            wraplength=190,
-            justify="left",
-            anchor="w",
-            cursor="hand2"
-        )
-        name_lbl.pack(padx=10, pady=(2, 2), fill="x")
-        name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
-
-        # プラットフォーム・サークル名表示
-        author_text = game.get("author", "不明")
-        plat = game.get("platform", "DLsite" if game.get("rj_code") else "その他")
-        author_line = f"[{plat}] 👤 {author_text}"
-
-        author_lbl = ctk.CTkLabel(
-            card,
-            text=author_line,
-            font=get_mac_font(size=10),
-            text_color="#8d89b0",
-            wraplength=190,
-            justify="left",
-            anchor="w"
-        )
-        author_lbl.pack(padx=10, pady=(0, 10), fill="x")
-
-        self._bind_card_hover(card, [img_frame, icon_btn, name_lbl, author_lbl])
-        for w in [card, img_frame, icon_btn, name_lbl, author_lbl]:
-            w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
-
-    def _create_game_tile(self, parent, game: Dict[str, Any], row: int, col: int):
-        """グリッド内のジャケットカード（3大プラットフォームバッジ ＆ 独立ジャンル・タグ付き）"""
-        game_id = game.get("id")
-
-        card = ctk.CTkFrame(
-            parent,
-            corner_radius=14,
-            fg_color="#13102b",
-            border_width=1,
-            border_color="#241e4d"
-        )
-        card.grid(row=row, column=col, padx=6, pady=8, sticky="nsew")
-
-        # 重複ゲーム判定
-        group_key = None
-        for k, g_list in self.grouped_games.items():
-            if any(item.get("id") == game.get("id") for item in g_list):
-                if len(g_list) > 1:
-                    group_key = k
-                break
-
-        # ジャケット画像フレーム (180x125 4:3ワイド比率)
-        img_container = ctk.CTkFrame(card, corner_radius=10, fg_color="#0a081a")
-        img_container.pack(padx=8, pady=(8, 4), fill="x")
-
-        ctk_img = self._get_ctk_image(game, target_size=(180, 125))
-
-        icon_btn = ctk.CTkButton(
-            img_container,
-            image=ctk_img,
-            text="",
-            height=125,
-            corner_radius=10,
-            fg_color="transparent",
-            hover_color="#221b4a",
-            command=lambda g=game: self._launch_game(g)
-        )
-        icon_btn.pack(fill="both", expand=True)
-
-        # トップバッジバー: プラットフォーム区分 (DLsite / FANZA / その他) ＆ ロック ＆ 重複
-        badge_bar = ctk.CTkFrame(card, fg_color="transparent", height=22)
-        badge_bar.pack(fill="x", padx=8, pady=(2, 2))
-
-        plat = game.get("platform", "DLsite" if game.get("rj_code") else "その他")
-        if plat == "DLsite":
-            plat_color = "#152445"
-            plat_border = "#2a4380"
-            plat_text = "#77aaf6"
-        elif plat == "FANZA":
-            plat_color = "#381024"
-            plat_border = "#6e1d44"
-            plat_text = "#ff5c8a"
-        else:
-            plat_color = "#1a1733"
-            plat_border = "#332c66"
-            plat_text = "#b5b0d8"
-
-        plat_badge = ctk.CTkLabel(
-            badge_bar,
-            text=plat,
-            font=get_mac_font(size=9, weight="bold"),
-            fg_color=plat_color,
-            text_color=plat_text,
-            corner_radius=6,
-            width=50,
-            height=18
-        )
-        plat_badge.pack(side="left", padx=(0, 4))
-
-        is_locked = game.get("icon_locked", False)
-        lock_btn = ctk.CTkButton(
-            badge_bar,
-            text="🔒" if is_locked else "✨",
-            width=24,
-            height=18,
-            corner_radius=9,
-            fg_color="#1b7a32" if is_locked else "#1a1538",
-            hover_color="#239a40" if is_locked else "#26204f",
-            text_color="#ffffff" if is_locked else "#77aaf6",
-            border_width=0 if is_locked else 1,
-            border_color="#362c6e",
-            font=get_mac_font(size=9),
-            command=lambda g=game: self._toggle_icon_lock(g)
-        )
-        lock_btn.pack(side="left")
-
-        if group_key:
-            dup_count = len(self.grouped_games[group_key])
-            dup_btn = ctk.CTkButton(
-                badge_bar,
-                text=f"🔁 {dup_count}",
-                width=42,
-                height=18,
-                corner_radius=9,
-                fg_color="#9e6d00",
-                hover_color="#b88002",
-                text_color="#ffffff",
-                font=get_mac_font(size=9, weight="bold"),
-                command=lambda k=group_key: self._open_comparison_dialog(k)
-            )
-            dup_btn.pack(side="right")
-
-        # ストアリンクボタン (DLsite または FANZA)
-        store_label = "🌐 DLsite" if plat == "DLsite" else ("🌐 FANZA" if plat == "FANZA" else "🌐 検索")
-        store_btn = ctk.CTkButton(
-            badge_bar,
-            text=store_label,
-            width=56,
-            height=18,
-            corner_radius=9,
-            fg_color="#1d1742",
-            hover_color="#2c2266",
-            text_color="#9dc2f8",
-            border_width=1,
-            border_color="#392d73",
-            font=get_mac_font(size=9, weight="bold"),
-            command=lambda g=game: self._open_store_page(g)
-        )
-        store_btn.pack(side="right", padx=(0, 4))
-
-        # 作品名（2行wrap）
-        name = game.get("name", "Game")
-        name_lbl = ctk.CTkLabel(
-            card,
-            text=name,
-            font=get_mac_font(size=12, weight="bold"),
-            text_color="#ffffff",
-            wraplength=180,
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#c7d5e0",
+            wraplength=170,
             justify="left",
             anchor="w",
             cursor="hand2"
@@ -987,96 +1074,86 @@ class ModernLauncherApp(ctk.CTk):
         name_lbl.pack(padx=8, pady=(2, 2), fill="x")
         name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
 
-        # 独立したゲームジャンル ＆ 公式タグ表示
-        genre_text = game.get("genre") or game.get("category", "")
-        tags = game.get("tags", [])
-        tag_parts = []
-        if genre_text and genre_text not in ["ゲーム", "download", "その他"]:
-            tag_parts.append(f"🏷️ {genre_text}")
-        if tags:
-            tag_parts.extend(tags[:2])
-
-        if tag_parts:
-            tag_lbl = ctk.CTkLabel(
-                card,
-                text=" • ".join(tag_parts),
-                font=get_mac_font(size=9),
-                text_color="#77aaf6",
-                wraplength=180,
-                justify="left",
-                anchor="w"
-            )
-            tag_lbl.pack(padx=8, pady=(0, 1), fill="x")
-
-        # 作者・サークル名
+        # 作者 / サークル名
         author_text = game.get("author", "不明")
         author_lbl = ctk.CTkLabel(
             card,
-            text=f"👤 {author_text}",
+            text=author_text,
             font=get_mac_font(size=10),
-            text_color="#8d89b0",
-            wraplength=180,
+            text_color="#8f98a0",
+            wraplength=170,
             justify="left",
             anchor="w"
         )
         author_lbl.pack(padx=8, pady=(0, 4), fill="x")
 
-        # アクションボタン（インストール済ならフォルダを開く、未インストールならDLsiteでダウンロード）
+        # アクションバー: プレイ/ダウンロード ＋ フォルダボタン
+        action_bar = ctk.CTkFrame(card, fg_color="transparent")
+        action_bar.pack(fill="x", padx=8, pady=(0, 8))
+
         is_installed = game.get("is_installed", True if game.get("path") else False)
         if is_installed:
-            action_btn = ctk.CTkButton(
-                card,
-                text="📂 フォルダを開く",
-                width=130,
-                height=24,
-                corner_radius=12,
-                fg_color="#181335",
-                hover_color="#271f54",
-                text_color="#a5a1c9",
-                border_width=1,
-                border_color="#2b2257",
-                font=get_mac_font(size=10),
+            play_btn = ctk.CTkButton(
+                action_bar,
+                text="▶ プレイ",
+                height=26,
+                corner_radius=2,
+                fg_color="#5c7e10",
+                hover_color="#78a317",
+                text_color="#ffffff",
+                font=get_mac_font(size=10, weight="bold"),
+                command=lambda g=game: self._launch_game(g)
+            )
+            play_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+            folder_btn = ctk.CTkButton(
+                action_bar,
+                text="📂",
+                width=28,
+                height=26,
+                corner_radius=2,
+                fg_color="#1e232d",
+                hover_color="#283444",
+                text_color="#8f98a0",
                 command=lambda g=game: self._open_game_folder(g)
             )
+            folder_btn.pack(side="right")
         else:
-            action_btn = ctk.CTkButton(
-                card,
-                text="⬇️ DLsiteでダウンロード",
-                width=138,
-                height=24,
-                corner_radius=12,
-                fg_color="#2c1f54",
-                hover_color="#3e2c7a",
-                text_color="#77aaf6",
-                border_width=1,
-                border_color="#4f389e",
+            dl_btn = ctk.CTkButton(
+                action_bar,
+                text="⬇️ ダウンロード",
+                height=26,
+                corner_radius=2,
+                fg_color="#1a9fff",
+                hover_color="#3dafff",
+                text_color="#ffffff",
                 font=get_mac_font(size=10, weight="bold"),
                 command=lambda g=game: self._open_store_page(g)
             )
-        action_btn.pack(pady=(2, 8))
+            dl_btn.pack(fill="x")
 
         # ホバーエフェクト
         self._bind_card_hover(card, [img_container, icon_btn, name_lbl, author_lbl])
 
-        # 右クリックメニューのバインド
+        # 右クリックメニュー
         for w in [card, img_container, icon_btn, name_lbl, author_lbl]:
             w.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
 
         self.card_widgets[game_id] = {
             "card": card,
             "icon_btn": icon_btn,
-            "lock_btn": lock_btn,
             "game": game
         }
 
     def _bind_card_hover(self, card, inner_widgets):
         def on_enter(e):
-            card.configure(fg_color="#191538", border_color="#3d3378")
+            card.configure(fg_color="#1c2533", border_color="#364560")
         def on_leave(e):
-            card.configure(fg_color="#13102b", border_color="#241e4d")
+            card.configure(fg_color="#131923", border_color="#212b3b")
 
         card.bind("<Enter>", on_enter)
         card.bind("<Leave>", on_leave)
+
 
     def _on_game_icon_improved(self, updated_game: Dict[str, Any]):
         self.after(0, lambda: self._apply_improved_icon(updated_game))
