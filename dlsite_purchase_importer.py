@@ -367,6 +367,10 @@ class DLsitePurchaseImporter:
                         pass
 
                 meta = DLsiteMetadataFetcher.fetch_by_rj(rj)
+                # PC上にexeが存在せず、かつゲーム作品でない（ASMR、ボイス、マンガ、動画等）場合は登録をスキップ
+                if not found_on_pc and meta and not meta.get("is_game", True):
+                    continue
+
                 title = clean_game_name(meta["title"]) if meta else rj
                 maker = meta["maker"] if meta else "不明"
                 genre = meta["genre"] if meta else "その他"

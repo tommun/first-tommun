@@ -87,6 +87,12 @@ class DLsiteMetadataFetcher:
                         primary_genre = cand
                         break
 
+                # ゲームかどうかの厳密判定（ボイス・ASMR、マンガ、CG集、動画等は除外）
+                is_game = any(cand in raw_fmt for cand in genre_candidates) or "ゲーム" in raw_fmt
+                if any(non_game in raw_fmt for non_game in ["ボイス・ASMR", "同人音声", "ボイスドラマ", "マンガ", "CG・イラスト", "動画"]):
+                    if not any(g in raw_fmt for g in ["ゲーム", "RPG", "ADV", "ACT", "SLG"]):
+                        is_game = False
+
                 return {
                     "rj_code": rj,
                     "title": title,
@@ -94,6 +100,8 @@ class DLsiteMetadataFetcher:
                     "genre": primary_genre,
                     "tags": tags,
                     "image_url": img_url,
+                    "work_format": raw_fmt,
+                    "is_game": is_game,
                     "voice_actors": outline.get("声優"),
                     "release_date": outline.get("販売日"),
                     "series": outline.get("シリーズ名"),
