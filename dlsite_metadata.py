@@ -93,6 +93,28 @@ class DLsiteMetadataFetcher:
                     if not any(g in raw_fmt for g in ["ゲーム", "RPG", "ADV", "ACT", "SLG"]):
                         is_game = False
 
+                # サンプルスクリーンショット画像一覧
+                sample_images = []
+                img_matches = re.findall(r'data-src="([^"]+)"', content)
+                for m in img_matches:
+                    if "_img_smp" in m or "_smp" in m or "sample" in m.lower():
+                        clean_m = m
+                        if clean_m.startswith("//"):
+                            clean_m = "https:" + clean_m
+                        elif not clean_m.startswith("http"):
+                            clean_m = "https://" + clean_m.lstrip("/")
+                        if clean_m not in sample_images:
+                            sample_images.append(clean_m)
+
+                # 作品紹介文
+                m_desc = re.search(r'class="work_parts_area[^"]*"[^>]*>(.*?)</div>', content, re.DOTALL)
+                if not m_desc:
+                    m_desc = re.search(r'itemprop="description"[^>]*>(.*?)</div>', content, re.DOTALL)
+                description = ""
+                if m_desc:
+                    description = html.unescape(re.sub(r'<[^>]+>', ' ', m_desc.group(1)).strip())
+                    description = re.sub(r'\s+', ' ', description)[:400]
+
                 return {
                     "rj_code": rj,
                     "title": title,
@@ -100,6 +122,8 @@ class DLsiteMetadataFetcher:
                     "genre": primary_genre,
                     "tags": tags,
                     "image_url": img_url,
+                    "sample_images": sample_images[:10],
+                    "description": description,
                     "work_format": raw_fmt,
                     "is_game": is_game,
                     "voice_actors": outline.get("声優"),

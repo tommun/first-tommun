@@ -2,6 +2,7 @@ import os
 import re
 import threading
 import webbrowser
+from store_browser import StoreBrowserManager
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from font_manager import get_mac_font
@@ -92,6 +93,11 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             text_color="#9e9abf"
         ).grid(row=0, column=0, sticky="w", pady=4)
 
+        # 保存済み認証情報の読み込み
+        saved_creds = self.config_mgr.config.get("dlsite_credentials", {})
+        saved_id = saved_creds.get("username", "")
+        saved_pw = saved_creds.get("password", "")
+
         self.login_id_entry = ctk.CTkEntry(
             form_box,
             width=320,
@@ -104,6 +110,8 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             placeholder_text="example@email.com"
         )
         self.login_id_entry.grid(row=0, column=1, sticky="w", padx=10, pady=4)
+        if saved_id:
+            self.login_id_entry.insert(0, saved_id)
 
         ctk.CTkLabel(
             form_box,
@@ -125,6 +133,22 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             placeholder_text="パスワード"
         )
         self.password_entry.grid(row=1, column=1, sticky="w", padx=10, pady=4)
+        if saved_pw:
+            self.password_entry.insert(0, saved_pw)
+
+        # ログイン情報の保存チェックボックス
+        self.save_creds_var = ctk.BooleanVar(value=bool(saved_id and saved_pw))
+        self.save_creds_check = ctk.CTkCheckBox(
+            tab_dlsite_login,
+            text="ログイン情報を設定に保存する（次回自動入力）",
+            variable=self.save_creds_var,
+            font=get_mac_font(size=11),
+            text_color="#38bdf8",
+            fg_color="#00f0ff",
+            hover_color="#00c8d7",
+            checkmark_color="#080b11"
+        )
+        self.save_creds_check.pack(anchor="w", padx=10, pady=(2, 6))
 
         self.auto_fetch_btn = ctk.CTkButton(
             tab_dlsite_login,
@@ -141,7 +165,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             tab_dlsite_login,
-            text="※ パスワードは保存されず、購入履歴取得の通信のみに安全に使用されます。",
+            text="※ ログイン情報は暗号化等はされずローカル設定ファイルに保存されます。共有PCではチェックを外してください。",
             font=get_mac_font(size=10),
             text_color="#737099"
         ).pack(anchor="w", padx=10)
@@ -159,7 +183,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             fanza_row1,
-            text="🌐 FANZA購入済み一覧を開く (ブラウザ)",
+            text="🌐 FANZA購入済み一覧を開く (内蔵ブラウザ)",
             width=230,
             height=30,
             corner_radius=8,
@@ -167,7 +191,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             hover_color="#6e2b94",
             text_color="#ffffff",
             font=get_mac_font(size=11, weight="bold"),
-            command=lambda: webbrowser.open("https://www.dmm.co.jp/digital/-/mylibrary/")
+            command=StoreBrowserManager.open_fanza_purchased
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
@@ -215,15 +239,15 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             row_browse,
-            text="🌐 DLsite購入履歴を開く",
-            width=170,
+            text="🌐 DLsite購入履歴を開く (内蔵ブラウザ)",
+            width=210,
             height=30,
             corner_radius=8,
             fg_color="#2c2266",
             hover_color="#3d308c",
             text_color="#ffffff",
             font=get_mac_font(size=11),
-            command=lambda: webbrowser.open("https://www.dlsite.com/maniax/mypage/userbuy")
+            command=StoreBrowserManager.open_dlsite_mypage
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
@@ -305,6 +329,18 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         if not login_id or not password:
             messagebox.showwarning("入力エラー", "ログインIDとパスワードを入力してください。")
             return
+
+        # 認証情報保存設定の反映
+        if self.save_creds_var.get():
+            self.config_mgr.config["dlsite_credentials"] = {
+                "username": login_id,
+                "password": password
+            }
+            self.config_mgr.save()
+        else:
+            if "dlsite_credentials" in self.config_mgr.config:
+                del self.config_mgr.config["dlsite_credentials"]
+                self.config_mgr.save()
 
         self.auto_fetch_btn.configure(state="disabled")
         self.start_import_btn.configure(state="disabled")

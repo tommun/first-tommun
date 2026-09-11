@@ -108,6 +108,28 @@ class FANZAMetadataFetcher:
                             elif kw not in tags:
                                 tags.append(kw)
 
+                        # サンプル画像取得（レスポンス内または詳細ページから）
+                        sample_images = []
+                        raw_samples = first.get('sample_image_urls', [])
+                        if raw_samples:
+                            sample_images = [s for s in raw_samples if isinstance(s, str)]
+                        elif detail_url or content_id:
+                            try:
+                                d_url = detail_url or f"https://www.dmm.co.jp/dc/doujin/-/detail/=/cid={content_id}/"
+                                req_d = urllib.request.Request(d_url, headers=cls.HEADERS)
+                                with urllib.request.urlopen(req_d, timeout=5) as res_d:
+                                    d_html = res_d.read().decode("utf-8", errors="ignore")
+                                smp_matches = re.findall(r'data-src="([^"]+)"|src="([^"]+jp[e]?g)"', d_html)
+                                for s1, s2 in smp_matches:
+                                    s = s1 or s2
+                                    if "sample" in s.lower() or "smp" in s.lower():
+                                        if s.startswith("//"):
+                                            s = "https:" + s
+                                        if s not in sample_images:
+                                            sample_images.append(s)
+                            except Exception:
+                                pass
+
                         return {
                             "content_id": content_id,
                             "title": p_title,
@@ -115,6 +137,7 @@ class FANZAMetadataFetcher:
                             "genre": primary_genre,
                             "tags": tags,
                             "image_url": high_res_img,
+                            "sample_images": sample_images[:10],
                             "url": detail_url or f"https://www.dmm.co.jp/dc/doujin/-/detail/=/cid={content_id}/"
                         }
         except Exception:

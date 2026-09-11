@@ -31,9 +31,12 @@ from icon_picker_dialog import IconPickerDialog
 from folder_manager_dialog import FolderManagerDialog
 from game_edit_dialog import GameEditDialog
 from font_manager import get_mac_font, get_mac_font_family
+from datetime import datetime
 from dlsite_metadata import DLsiteMetadataFetcher
 from dlsite_purchase_dialog import DLsitePurchaseDialog
 from fanza_metadata import FANZAMetadataFetcher
+from game_detail_view import GameDetailView
+from store_browser import StoreBrowserManager
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -46,6 +49,7 @@ class ModernLauncherApp(ctk.CTk):
 
         self.config_mgr = ConfigManager()
         self.icon_helper = IconHelper()
+        self.detail_view = None  # Steam固有詳細ビューインスタンス
 
         self.title("CYBER LAUNCHER")
         window_w = self.config_mgr.config.get("settings", {}).get("window_width", 1280)
@@ -226,7 +230,8 @@ class ModernLauncherApp(ctk.CTk):
             fg_color="#111827",
             hover_color="#1f293d",
             text_color="#64748b",
-            font=get_mac_font(size=11, weight="bold")
+            font=get_mac_font(size=11, weight="bold"),
+            command=self._close_game_detail
         )
         back_btn.pack(side="left", padx=(0, 2), pady=8)
 
@@ -244,25 +249,35 @@ class ModernLauncherApp(ctk.CTk):
         fwd_btn.pack(side="left", padx=(0, 14), pady=8)
 
         # ナビ主要タブ (STORE / LIBRARY / NETWORK)
-        store_tab = ctk.CTkLabel(
+        self.nav_store_btn = ctk.CTkButton(
             nav_left_box,
             text="ストア",
             font=get_mac_font(size=13, weight="bold"),
-            text_color="#64748b",
-            cursor="hand2"
+            text_color="#94a3b8",
+            fg_color="transparent",
+            hover_color="#1a2333",
+            width=64,
+            height=28,
+            cursor="hand2",
+            command=self._open_store_browser
         )
-        store_tab.pack(side="left", padx=12, pady=10)
+        self.nav_store_btn.pack(side="left", padx=8, pady=8)
 
         # ライブラリ（アクティブ・ネオンシアン下線）
         lib_tab_container = ctk.CTkFrame(nav_left_box, fg_color="transparent")
         lib_tab_container.pack(side="left", padx=12, fill="y")
-        lib_tab = ctk.CTkLabel(
+        lib_tab = ctk.CTkButton(
             lib_tab_container,
             text="ライブラリ",
             font=get_mac_font(size=14, weight="bold"),
-            text_color="#f8fafc"
+            text_color="#f8fafc",
+            fg_color="transparent",
+            hover_color="#1a2333",
+            width=80,
+            height=28,
+            command=self._close_game_detail
         )
-        lib_tab.pack(side="top", pady=(8, 2))
+        lib_tab.pack(side="top", pady=(6, 0))
         lib_underline = ctk.CTkFrame(lib_tab_container, height=3, width=64, fg_color="#00f0ff", corner_radius=1)
         lib_underline.pack(side="bottom")
 
@@ -596,7 +611,7 @@ class ModernLauncherApp(ctk.CTk):
             anchor="w",
             height=20,
             corner_radius=2,
-            command=lambda g=game: self._launch_game(g)
+            command=lambda g=game: self._open_game_detail(g)
         )
         g_item.pack(fill="x", padx=(10, 2), pady=0)
         g_item.bind("<Button-3>", lambda e, g=game: self._show_context_menu(e, g))
@@ -775,7 +790,40 @@ class ModernLauncherApp(ctk.CTk):
                 self._run_background_scan(self.config_mgr.scan_folders)
                 return
 
+        self._auto_resolve_unnamed_rj_games()
         self.refresh_games()
+
+    def _auto_resolve_unnamed_rj_games(self):
+        """RJコードのままになっているゲームを検知し、公式タイトルと画像を自動補正"""
+        def worker():
+            updated = False
+            for g in self.config_mgr.games:
+                name = g.get("name", "")
+                if re.match(r'^(RJ|VJ|BJ)\d+$', name.strip(), re.IGNORECASE):
+                    rj = name.strip().upper()
+                    meta = DLsiteMetadataFetcher.fetch_by_rj(rj)
+                    if meta and meta.get("title"):
+                        g["name"] = clean_game_name(meta["title"])
+                        g["author"] = meta.get("maker", g.get("author", "不明"))
+                        g["genre"] = meta.get("genre", g.get("genre", "その他"))
+                        g["category"] = g["genre"]
+                        if meta.get("tags"):
+                            for t in meta["tags"]:
+                                if t not in g.get("tags", []):
+                                    g.setdefault("tags", []).append(t)
+                        if meta.get("image_url") and not g.get("icon_locked"):
+                            img = self.icon_helper.download_image(meta["image_url"])
+                            if img:
+                                p = self.icon_helper.cache_image(f"dlsite_{rj}", img)
+                                if p:
+                                    g["icon_path"] = p
+                                    g["icon_quality"] = QUALITY_DLSITE_OFFICIAL
+                        updated = True
+            if updated:
+                self.config_mgr.save()
+                self.after(0, self.refresh_games)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _run_background_scan(self, folders: List[str]):
         self.status_lbl.configure(text="ゲームを全探索スキャン中...", text_color="#3a86ff")
@@ -1079,7 +1127,7 @@ class ModernLauncherApp(ctk.CTk):
             corner_radius=2,
             fg_color="transparent",
             hover_color="#111827",
-            command=lambda g=game: self._launch_game(g)
+            command=lambda g=game: self._open_game_detail(g)
         )
         icon_btn.pack(fill="both", expand=True)
 
@@ -1096,7 +1144,7 @@ class ModernLauncherApp(ctk.CTk):
             cursor="hand2"
         )
         name_lbl.pack(padx=8, pady=(0, 2), fill="x")
-        name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
+        name_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # サークル/作者名
         author_text = game.get("author", "不明")
@@ -1110,6 +1158,8 @@ class ModernLauncherApp(ctk.CTk):
             anchor="w"
         )
         author_lbl.pack(padx=8, pady=(0, 6), fill="x")
+        author_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
+        card.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # ネオングリーン（起動） / サイバーブルー（ダウンロード）ボタン
         is_installed = game.get("is_installed", True if game.get("path") else False)
@@ -1135,7 +1185,7 @@ class ModernLauncherApp(ctk.CTk):
                 hover_color="#0080cc",
                 text_color="#ffffff",
                 font=get_mac_font(size=11, weight="bold"),
-                command=lambda g=game: self._open_store_page(g)
+                command=lambda g=game: self._open_store_page(game)
             )
         play_btn.pack(fill="x", padx=8, pady=(0, 8))
 
@@ -1170,7 +1220,7 @@ class ModernLauncherApp(ctk.CTk):
             corner_radius=2,
             fg_color="transparent",
             hover_color="#111827",
-            command=lambda g=game: self._launch_game(g)
+            command=lambda g=game: self._open_game_detail(g)
         )
         icon_btn.pack(fill="both", expand=True)
 
@@ -1187,7 +1237,7 @@ class ModernLauncherApp(ctk.CTk):
             cursor="hand2"
         )
         name_lbl.pack(padx=8, pady=(2, 2), fill="x")
-        name_lbl.bind("<Button-1>", lambda e, g=game: self._launch_game(g))
+        name_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # 作者 / サークル名
         author_text = game.get("author", "不明")
@@ -1201,6 +1251,8 @@ class ModernLauncherApp(ctk.CTk):
             anchor="w"
         )
         author_lbl.pack(padx=8, pady=(0, 4), fill="x")
+        author_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
+        card.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # アクションバー: プレイ/ダウンロード ＋ フォルダボタン
         action_bar = ctk.CTkFrame(card, fg_color="transparent")
@@ -1360,23 +1412,62 @@ class ModernLauncherApp(ctk.CTk):
         self.refresh_games()
 
     def _open_store_page(self, game: Dict[str, Any]):
-        """プラットフォームに応じた商品ページ（DLsite / FANZA）を開く"""
+        """プラットフォームに応じた商品ページ（DLsite / FANZA）を内蔵ブラウザで開く"""
         plat = game.get("platform", "DLsite")
+        name = game.get("name", "")
         if plat == "FANZA":
-            title = game.get("name", "")
-            enc = urllib.parse.quote(title)
-            url = f"https://www.dmm.co.jp/search/=/searchstr={enc}/"
+            cid = game.get("fanza_cid")
+            if cid:
+                StoreBrowserManager.open_fanza(cid)
+            else:
+                enc = urllib.parse.quote(name)
+                StoreBrowserManager.open_url(f"https://www.dmm.co.jp/search/=/searchstr={enc}/", f"FANZA - {name}")
         else:
-            url = game.get("dlsite_url")
             rj = game.get("rj_code")
-            if not url and rj:
-                url = f"https://www.dlsite.com/maniax/work/=/product_id/{rj}.html"
-            if not url:
-                title = game.get("name", "")
-                enc = urllib.parse.quote(title)
-                url = f"https://www.dlsite.com/maniax/fsr/=/language/jp/keyword/{enc}"
-        webbrowser.open(url)
-        self.status_lbl.configure(text=f"ブラウザで商品ページを開きました: {game.get('name')}", text_color="#77aaf6")
+            if rj:
+                StoreBrowserManager.open_dlsite(rj)
+            else:
+                url = game.get("dlsite_url")
+                if not url:
+                    enc = urllib.parse.quote(name)
+                    url = f"https://www.dlsite.com/maniax/fsr/=/language/jp/keyword/{enc}"
+                StoreBrowserManager.open_url(url, f"DLsite - {name}")
+        self.status_lbl.configure(text=f"内蔵ブラウザで商品ページを開きました: {name}", text_color="#77aaf6")
+
+    def _open_game_detail(self, game: Dict[str, Any]):
+        """Steam風のゲーム固有詳細ページを表示"""
+        if self.detail_view:
+            self.detail_view.destroy()
+            self.detail_view = None
+
+        self.scroll_canvas.pack_forget()
+
+        self.detail_view = GameDetailView(
+            self.main_split,
+            game=game,
+            icon_helper=self.icon_helper,
+            on_back=self._close_game_detail,
+            on_launch=self._launch_game,
+            on_open_store=lambda url: StoreBrowserManager.open_url(url, f"{game.get('name')} - ストア"),
+            on_open_settings=self._open_edit_dialog
+        )
+        self.detail_view.pack(fill="both", expand=True)
+        self.status_lbl.configure(text=f"🎮 ゲーム詳細表示: {game.get('name')}", text_color="#00f0ff")
+
+    def _close_game_detail(self):
+        """詳細ページを閉じてライブラリ一覧に戻る"""
+        if self.detail_view:
+            self.detail_view.destroy()
+            self.detail_view = None
+
+        self.scroll_canvas.pack(fill="both", expand=True)
+        self.status_lbl.configure(text="⚡ SYSTEM READY // DISK C: HEAVY (SSD) | DISK D: LIGHT (HDD)", text_color="#00f0ff")
+        self.refresh_games()
+
+    def _open_store_browser(self):
+        """アプリケーション内包型WebView2ストアブラウザを開く"""
+        StoreBrowserManager.open_dlsite()
+        self.status_lbl.configure(text="🌐 内蔵ストアブラウザ (DLsite / FANZA) を起動しました", text_color="#00f0ff")
 
     def _fetch_single_game_fanza_metadata(self, game: Dict[str, Any]):
         """単体ゲームのFANZA情報を取得し公式画像・ジャンル・タグに差し替え"""
@@ -1519,9 +1610,9 @@ class ModernLauncherApp(ctk.CTk):
     def _launch_game(self, game: Dict[str, Any]):
         exe_path = game.get("path", "")
         if not exe_path:
-            # 未インストールの場合、ストアページを開いて案内
+            # 未インストールの場合、内蔵ストアページを開いて案内
             self._open_store_page(game)
-            messagebox.showinfo("未インストール", f"「{game.get('name')}」は未インストールです。\nブラウザで作品ページを開きました。ダウンロード後、ファイルをランチャーにドロップしてください。")
+            messagebox.showinfo("未インストール", f"「{game.get('name')}」は未インストールです。\n内蔵ブラウザで商品ページを開きました。ダウンロード後、ファイルをランチャーにドロップしてください。")
             return
 
         work_dir = game.get("work_dir") or os.path.dirname(exe_path)
@@ -1537,13 +1628,35 @@ class ModernLauncherApp(ctk.CTk):
 
         try:
             cwd = work_dir if os.path.exists(work_dir) else os.path.dirname(exe_path)
-            subprocess.Popen(cmd, cwd=cwd)
+            proc = subprocess.Popen(cmd, cwd=cwd)
 
+            # 最終プレイ日時・起動回数の更新
+            now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+            game["last_played"] = now_str
             game["last_launched"] = time.time()
             game["play_count"] = game.get("play_count", 0) + 1
             self.config_mgr.save()
 
-            self.status_lbl.configure(text=f"起動しました: {game.get('name')}", text_color="#2b7a4b")
+            # プレイ時間計測スレッド
+            start_time = time.time()
+            def track_play_time(p, g, s_time):
+                try:
+                    p.wait()
+                    elapsed = int(time.time() - s_time)
+                    if elapsed > 2:
+                        g["play_time_seconds"] = g.get("play_time_seconds", 0) + elapsed
+                        self.config_mgr.save()
+                        # 詳細ビューを開いていた場合は再表示更新
+                        if self.detail_view and getattr(self.detail_view, "game", {}).get("id") == g.get("id"):
+                            self.after(0, lambda: self._open_game_detail(g))
+                        else:
+                            self.after(0, self.refresh_games)
+                except Exception:
+                    pass
+
+            threading.Thread(target=track_play_time, args=(proc, game, start_time), daemon=True).start()
+
+            self.status_lbl.configure(text=f"起動しました (プレイ時間計測中): {game.get('name')}", text_color="#00ff9d")
         except Exception as e:
             messagebox.showerror("起動エラー", f"起動に失敗しました:\n{e}")
 
@@ -1592,6 +1705,19 @@ class ModernLauncherApp(ctk.CTk):
         FolderManagerDialog(self, self.config_mgr, on_scan_complete=self.refresh_games)
 
 def main():
+    if "--store-browser" in sys.argv:
+        try:
+            from store_browser_process import main as browser_main
+            # sys.argvを調整
+            idx = sys.argv.index("--store-browser")
+            url = sys.argv[idx + 1] if len(sys.argv) > idx + 1 else "https://www.dlsite.com/maniax/"
+            title = sys.argv[idx + 2] if len(sys.argv) > idx + 2 else "内蔵ストアブラウザ"
+            sys.argv = [sys.argv[0], "--url", url, "--title", title]
+            browser_main()
+            return
+        except Exception as e:
+            print(f"Store browser error: {e}")
+
     app = ModernLauncherApp()
     app.mainloop()
 
