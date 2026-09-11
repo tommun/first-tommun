@@ -88,9 +88,13 @@ class GameDetailView(ctk.CTkFrame):
         hero_inner = ctk.CTkFrame(self.hero_frame, fg_color="transparent")
         hero_inner.pack(fill="x", padx=24, pady=20)
 
-        # 左側: アイコン/ジャケット
-        self.cover_label = ctk.CTkLabel(hero_inner, text="", width=160, height=220, fg_color="#0f172a", corner_radius=8)
-        self.cover_label.pack(side="left", padx=(0, 24))
+        # 左側: アイコン/ジャケット（アスペクト比保持コンテナ）
+        self.cover_box = ctk.CTkFrame(hero_inner, fg_color="#0f172a", corner_radius=8, width=240, height=180)
+        self.cover_box.pack(side="left", padx=(0, 24))
+        self.cover_box.pack_propagate(False)
+
+        self.cover_label = ctk.CTkLabel(self.cover_box, text="")
+        self.cover_label.place(relx=0.5, rely=0.5, anchor="center")
         self._set_cover_image()
 
         # 右側: タイトル、サークル、バッジ、メタ情報
@@ -448,10 +452,18 @@ class GameDetailView(ctk.CTkFrame):
         if icon_path and os.path.exists(icon_path):
             try:
                 pil_img = Image.open(icon_path)
-                pil_img = pil_img.resize((160, 220), Image.Resampling.LANCZOS)
-                ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(160, 220))
-                self.cover_label.configure(image=ctk_img, text="")
-                return
+                orig_w, orig_h = pil_img.size
+                if orig_w > 0 and orig_h > 0:
+                    max_w, max_h = 240, 180
+                    ratio = min(max_w / orig_w, max_h / orig_h)
+                    new_w = max(1, int(orig_w * ratio))
+                    new_h = max(1, int(orig_h * ratio))
+
+                    resized = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    ctk_img = ctk.CTkImage(light_image=resized, dark_image=resized, size=(new_w, new_h))
+                    self.sample_photos.append(ctk_img)
+                    self.cover_label.configure(image=ctk_img, text="", width=new_w, height=new_h)
+                    return
             except Exception:
                 pass
         self.cover_label.configure(text="NO IMAGE\n(公式画像未取得)", font=("Segoe UI", 11), text_color="#64748b")
@@ -574,11 +586,12 @@ class GameDetailView(ctk.CTkFrame):
     def _set_main_preview(self, pil_img: Image.Image):
         # メインプレビューをアスペクト比保持でリサイズ
         w, h = pil_img.size
-        target_w = 480
-        target_h = int(h * (target_w / w))
-        if target_h > 300:
-            target_h = 300
-            target_w = int(w * (target_h / h))
+        if w <= 0 or h <= 0:
+            return
+        max_w, max_h = 540, 320
+        ratio = min(max_w / w, max_h / h)
+        target_w = max(1, int(w * ratio))
+        target_h = max(1, int(h * ratio))
 
         resized = pil_img.copy().resize((target_w, target_h), Image.Resampling.LANCZOS)
         ctk_main = ctk.CTkImage(light_image=resized, dark_image=resized, size=(target_w, target_h))
