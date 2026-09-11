@@ -24,7 +24,7 @@ class GameEditDialog(ctk.CTkToplevel):
         self.title("＋ アプリ・ゲームを追加" if is_new else "✏️ ゲーム情報の編集")
         self.geometry("660x680")
         self.minsize(600, 600)
-        self.configure(fg_color="#080617")
+        self.configure(fg_color="#080b11")
 
         self.grab_set()
         self.focus_set()
@@ -38,10 +38,10 @@ class GameEditDialog(ctk.CTkToplevel):
     def _build_ui(self):
         main_frame = ctk.CTkFrame(
             self,
-            corner_radius=16,
-            fg_color="#121028",
+            corner_radius=12,
+            fg_color="#0d121d",
             border_width=1,
-            border_color="#221e4a"
+            border_color="#1e293b"
         )
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -51,7 +51,7 @@ class GameEditDialog(ctk.CTkToplevel):
             main_frame,
             text=title_text,
             font=get_mac_font(size=18, weight="bold"),
-            text_color="#ffffff"
+            text_color="#00f0ff"
         ).pack(anchor="w", padx=15, pady=(15, 12))
 
         # フォームグリッド

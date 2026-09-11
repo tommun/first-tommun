@@ -20,7 +20,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         self.title("📥 購入作品・ライブラリの自動同期・取り込み")
         self.geometry("680x670")
         self.minsize(640, 580)
-        self.configure(fg_color="#09071a")
+        self.configure(fg_color="#080b11")
 
         self.grab_set()
         self.focus_set()
@@ -30,10 +30,10 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
     def _build_ui(self):
         container = ctk.CTkFrame(
             self,
-            corner_radius=16,
-            fg_color="#120e2a",
+            corner_radius=12,
+            fg_color="#0d121d",
             border_width=1,
-            border_color="#241d52"
+            border_color="#1e293b"
         )
         container.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -42,7 +42,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             container,
             text="📥 DLsite / FANZA 購入作品の同期・サムネイル更新",
             font=get_mac_font(size=16, weight="bold"),
-            text_color="#ffffff"
+            text_color="#00f0ff"
         ).pack(anchor="w", padx=16, pady=(16, 4))
 
         # 説明文
@@ -54,19 +54,19 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             container,
             text=desc,
             font=get_mac_font(size=11),
-            text_color="#9e9abf",
+            text_color="#94a3b8",
             justify="left"
         ).pack(anchor="w", padx=16, pady=(0, 12))
 
         # === タブビュー ===
         self.tabview = ctk.CTkTabview(
             container,
-            fg_color="#181335",
-            segmented_button_fg_color="#100c26",
-            segmented_button_selected_color="#3a86ff",
-            segmented_button_selected_hover_color="#2b68cb",
-            segmented_button_unselected_color="#181335",
-            segmented_button_unselected_hover_color="#231b4d"
+            fg_color="#080b11",
+            segmented_button_fg_color="#0d121d",
+            segmented_button_selected_color="#00f0ff",
+            segmented_button_selected_hover_color="#00c8d7",
+            segmented_button_unselected_color="#111827",
+            segmented_button_unselected_hover_color="#1e293b"
         )
         self.tabview.pack(fill="both", expand=True, padx=16, pady=(0, 10))
 
@@ -253,7 +253,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
         self.text_area.insert("1.0", "ここにRJ番号（例: RJ01360185）またはHTMLを直接貼り付けてください")
 
         # プログレスバー & ステータス
-        self.progress_bar = ctk.CTkProgressBar(container, height=6, corner_radius=3, fg_color="#181335", progress_color="#3a86ff")
+        self.progress_bar = ctk.CTkProgressBar(container, height=6, corner_radius=3, fg_color="#111827", progress_color="#00f0ff")
         self.progress_bar.set(0)
         self.progress_bar.pack(fill="x", padx=16, pady=(0, 4))
 
@@ -261,7 +261,7 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             container,
             text="準備完了",
             font=get_mac_font(size=11),
-            text_color="#737099"
+            text_color="#64748b"
         )
         self.status_lbl.pack(anchor="w", padx=16, pady=(0, 10))
 
@@ -273,10 +273,10 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             btn_box,
             text="📥 DLsite同期を実行",
             height=36,
-            corner_radius=18,
-            fg_color="#3a86ff",
-            hover_color="#2b68cb",
-            text_color="#ffffff",
+            corner_radius=4,
+            fg_color="#00f0ff",
+            hover_color="#00c8d7",
+            text_color="#080b11",
             font=get_mac_font(size=12, weight="bold"),
             command=self._start_dlsite_import
         )
@@ -287,10 +287,12 @@ class DLsitePurchaseDialog(ctk.CTkToplevel):
             text="閉じる",
             width=80,
             height=36,
-            corner_radius=18,
-            fg_color="#1e183d",
-            hover_color="#2c2357",
-            text_color="#a5a1c9",
+            corner_radius=4,
+            fg_color="#111827",
+            hover_color="#1e293b",
+            text_color="#94a3b8",
+            border_width=1,
+            border_color="#1e293b",
             font=get_mac_font(size=11),
             command=self.destroy
         ).pack(side="right")

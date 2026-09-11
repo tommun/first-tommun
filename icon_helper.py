@@ -452,12 +452,11 @@ class ContinuousIconOptimizer:
         self.running = False
 
     def _worker_loop(self):
-        """常にバックグラウンドで最適サムネイルを探し続けるループ"""
-        time.sleep(1.0) # 起動直後の負荷分散
+        """バックグラウンドでサムネイル最適化を行う低負荷ループ"""
+        time.sleep(5.0) # 起動完了まで待機してUI描画を最優先
         while self.running:
             try:
                 games = self.get_games_fn()
-                # 最高品質に達しておらず、かつユーザーによって確定(ロック)されていないゲームを抽出
                 candidates = [
                     g for g in games
                     if g.get("icon_quality", QUALITY_NONE) < QUALITY_DLSITE_OFFICIAL
@@ -465,29 +464,25 @@ class ContinuousIconOptimizer:
                 ]
 
                 if not candidates:
-                    # すべて最高品質なら、定期的に（60秒間隔）待機して次の追加に備える
-                    time.sleep(60)
+                    time.sleep(120)
                     continue
 
-                for game in candidates:
+                for game in candidates[:3]: # 1回あたり最大3件に絞って負荷分散
                     if not self.running:
                         break
 
                     cur_quality = game.get("icon_quality", QUALITY_NONE)
                     new_path, new_quality = self.icon_helper.resolve_best_thumbnail(game, allow_web_search=True)
 
-                    # より高品質なサムネイルが見つかった場合、アップデート！
                     if new_quality > cur_quality and new_path:
                         game["icon_path"] = new_path
                         game["icon_quality"] = new_quality
                         self.on_updated_callback(game)
 
-                    # サーバ負荷軽減のため少し待機
-                    time.sleep(1.5)
+                    time.sleep(3.0)
 
             except Exception as e:
-                print(f"[ContinuousIconOptimizer] エラー: {e}")
-                time.sleep(10)
+                time.sleep(30)
 
-            # 1周完了したら30秒待機して再チェック
-            time.sleep(30)
+            # バッチ間に十分なインターバルを設けてUIを常に軽快に保つ
+            time.sleep(60)

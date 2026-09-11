@@ -3,22 +3,21 @@ from tkinter import font as tkfont
 from typing import Optional
 import customtkinter as ctk
 
-# DLsite Sound & macOS準拠のフォント優先順位リスト
-MAC_FONT_CANDIDATES = [
-    "Zen Maru Gothic",          # DLsite Sound 特設サイト指定フォント
-    "SF Pro Rounded",           # Apple Rounded
-    "SF Pro Display",
-    "SF Pro Text",
-    "SF Pro",
-    "Hiragino Maru Gothic ProN",
-    "Hiragino Sans",
-    "Hiragino Kaku Gothic ProN",
-    "Helvetica Neue",
-    "BIZ UDGothic",
-    "Yu Gothic UI",             # Windowsモダン角ゴシック
+# 近未来・サイバー・Sci-Fi ＆ モダンUIフォント候補リスト
+CYBER_FONT_CANDIDATES = [
+    "Segoe UI Variable Display",
+    "Segoe UI Variable Text",
     "Segoe UI",
+    "SF Pro Display",
+    "Consolas",
+    "Cascadia Code",
+    "Bahnschrift",
+    "Yu Gothic UI",
     "Meiryo UI",
 ]
+
+MAC_FONT_CANDIDATES = CYBER_FONT_CANDIDATES
+
 
 _detected_mac_font: Optional[str] = None
 
