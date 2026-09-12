@@ -37,6 +37,7 @@ from dlsite_purchase_dialog import DLsitePurchaseDialog
 from fanza_metadata import FANZAMetadataFetcher
 from game_detail_view import GameDetailView
 from store_browser import StoreBrowserManager
+from download_manager import DownloadManager
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -87,6 +88,7 @@ class ModernLauncherApp(ctk.CTk):
 
         # 起動時処理
         self.after(200, self._initial_check_and_load)
+        self.after(500, self._poll_download_status)
 
     def _setup_window_events(self):
         """全画面切り替えキーバインドおよびリサイズ検知イベント"""
@@ -384,6 +386,26 @@ class ModernLauncherApp(ctk.CTk):
             text_color="#00f0ff"
         )
         self.status_lbl.pack(side="left", padx=16)
+
+        # ダウンロードHUDプログレスコンテナ
+        self.dl_hud_frame = ctk.CTkFrame(self.footer_bar, fg_color="transparent")
+        self.dl_hud_lbl = ctk.CTkLabel(
+            self.dl_hud_frame,
+            text="⬇️ ダウンロード中: 0%",
+            font=get_mac_font(size=10, weight="bold"),
+            text_color="#00ff9d"
+        )
+        self.dl_hud_lbl.pack(side="left", padx=(0, 8))
+        self.dl_hud_prog = ctk.CTkProgressBar(
+            self.dl_hud_frame,
+            width=160,
+            height=10,
+            corner_radius=3,
+            progress_color="#00ff9d",
+            fg_color="#111827"
+        )
+        self.dl_hud_prog.set(0)
+        self.dl_hud_prog.pack(side="left")
 
         self.dnd_lbl = ctk.CTkLabel(
             self.footer_bar,
@@ -753,6 +775,62 @@ class ModernLauncherApp(ctk.CTk):
                 self.after(0, lambda: self.status_lbl.configure(text="展開エラーが発生しました", text_color="#f87171"))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _poll_download_status(self):
+        """内蔵ブラウザからのダウンロード進捗状態を定期ポーリングしてHUD・カード・詳細画面に反映"""
+        data = DownloadManager.get_instance().check_status_file()
+        if data:
+            status = data.get("status")
+            fn = data.get("filename", "")
+            prog = data.get("progress", 0.0)
+            recv = data.get("bytes_received", 0)
+            tot = data.get("total_bytes", 0)
+            file_p = data.get("file_path", "")
+
+            recv_mb = recv / (1024 * 1024)
+            tot_mb = tot / (1024 * 1024)
+
+            if status == "downloading":
+                # 1. 最下部HUDステータスバー
+                self.dl_hud_lbl.configure(text=f"⬇️ {fn[:16]}...: {prog:.0f}% ({recv_mb:.0f}M/{tot_mb:.0f}M)")
+                self.dl_hud_prog.set(prog / 100.0)
+
+                # 2. 該当ゲームカード（ファイル名にRJコード等が含まれる場合）
+                m = re.search(r'(RJ\d{6,8}|VJ\d{6,8}|BJ\d{6,8})', fn, re.IGNORECASE)
+                rj = m.group(1).upper() if m else ""
+                for gid, wdict in self.card_widgets.items():
+                    g = wdict.get("game", {})
+                    g_rj = (g.get("rj_code") or "").upper()
+                    if (rj and g_rj == rj) or (g.get("name", "").lower() in fn.lower()):
+                        btn = wdict.get("dl_btn")
+                        if btn and btn.winfo_exists():
+                            btn.configure(
+                                text=f"⬇️ {prog:.0f}% ({recv_mb:.0f}M)",
+                                fg_color="#f59e0b",
+                                hover_color="#d97706"
+                            )
+
+                # 3. ゲーム詳細ビューが開いている場合
+                if self.detail_view and hasattr(self.detail_view, "update_download_progress"):
+                    g_view = getattr(self.detail_view, "game", {})
+                    g_view_rj = (g_view.get("rj_code") or "").upper()
+                    if (rj and g_view_rj == rj) or (g_view.get("name", "").lower() in fn.lower()):
+                        self.detail_view.update_download_progress(prog, recv, tot)
+
+            elif status == "completed":
+                self.dl_hud_lbl.configure(text=f"✨ ダウンロード完了: {fn}")
+                self.dl_hud_prog.set(1.0)
+                DownloadManager.clear_status()
+                # ZIPであれば自動展開・登録トリガー
+                if file_p and os.path.exists(file_p) and file_p.lower().endswith(".zip"):
+                    self._handle_dropped_zip(Path(file_p))
+
+            elif status in ["cancelled", "interrupted"]:
+                self.dl_hud_lbl.configure(text=f"⚠️ 中断: {fn}")
+                self.dl_hud_prog.set(0)
+                DownloadManager.clear_status()
+
+        self.after(300, self._poll_download_status)
 
     def _on_zip_extracted_done(self, zip_name: str, count: int, drive_name: str, dest_dir: str):
         self.status_lbl.configure(text=f"✨ {zip_name} を {drive_name} に展開・登録完了 ({count}作品)", text_color="#00ff9d")
@@ -1309,6 +1387,7 @@ class ModernLauncherApp(ctk.CTk):
         self.card_widgets[game_id] = {
             "card": card,
             "icon_btn": icon_btn,
+            "dl_btn": dl_btn if not is_installed else None,
             "game": game
         }
 

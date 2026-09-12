@@ -166,7 +166,7 @@ class GameDetailView(ctk.CTkFrame):
         # プレイボタン
         is_installed = self.game.get("is_installed", True)
         if is_installed:
-            play_btn = ctk.CTkButton(
+            self.action_play_btn = ctk.CTkButton(
                 action_bar,
                 text="▶  プレイ",
                 command=lambda: self.on_launch(self.game),
@@ -179,7 +179,7 @@ class GameDetailView(ctk.CTkFrame):
                 corner_radius=6
             )
         else:
-            play_btn = ctk.CTkButton(
+            self.action_play_btn = ctk.CTkButton(
                 action_bar,
                 text="⬇️  ストア / ダウンロード",
                 command=self._open_store_action,
@@ -191,7 +191,7 @@ class GameDetailView(ctk.CTkFrame):
                 height=44,
                 corner_radius=6
             )
-        play_btn.pack(side="left", padx=14, pady=10)
+        self.action_play_btn.pack(side="left", padx=14, pady=10)
 
         # プレイ時間 & 最終プレイ日
         stats_frame = ctk.CTkFrame(action_bar, fg_color="transparent")
@@ -597,3 +597,24 @@ class GameDetailView(ctk.CTkFrame):
         ctk_main = ctk.CTkImage(light_image=resized, dark_image=resized, size=(target_w, target_h))
         self.sample_photos.append(ctk_main)
         self.main_preview.configure(image=ctk_main, text="", width=target_w, height=target_h)
+
+    def update_download_progress(self, progress: float, bytes_recv: int, total_bytes: int):
+        """ダウンロード進行状況をボタンに反映"""
+        if hasattr(self, "action_play_btn") and self.action_play_btn.winfo_exists():
+            recv_mb = bytes_recv / (1024 * 1024)
+            total_mb = total_bytes / (1024 * 1024)
+            if progress >= 100.0:
+                self.action_play_btn.configure(
+                    text="📦 展開＆登録中...",
+                    fg_color="#00ff9d",
+                    hover_color="#00cc7d",
+                    text_color="#080b11"
+                )
+            else:
+                self.action_play_btn.configure(
+                    text=f"⬇️ 進行中 ({progress:.1f}%) {recv_mb:.0f}M/{total_mb:.0f}M",
+                    fg_color="#f59e0b",
+                    hover_color="#d97706",
+                    text_color="#ffffff"
+                )
+

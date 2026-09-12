@@ -10,7 +10,15 @@ class ConfigManager:
     """設定およびゲーム一覧の読み書き・永続化を管理するクラス"""
 
     def __init__(self, config_path: str = DEFAULT_CONFIG_FILE):
-        self.config_path = Path(config_path).resolve()
+        # マスター共有パス (C:\Games\Launcher\launcher_config.json) を最優先
+        master_path = Path(r"C:\Games\Launcher\launcher_config.json")
+        if master_path.exists():
+            self.config_path = master_path
+        elif Path(r"C:\Games\Launcher").exists():
+            self.config_path = master_path
+        else:
+            self.config_path = Path(config_path).resolve()
+
         self.config: Dict[str, Any] = self._get_default_config()
         self.load()
 
@@ -54,11 +62,24 @@ class ConfigManager:
             self.save()
 
     def save(self):
-        """設定ファイルへ保存"""
+        """設定ファイルへ保存（マスターおよび起動元へミラーリング）"""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
+
+            # ミラーリング先（GameLauncherAppやデスクトップ）
+            mirror_paths = [
+                Path(r"C:\Games\Launcher\GameLauncherApp\launcher_config.json"),
+                Path(os.path.expanduser(r"~\Desktop\launcher_config.json")),
+            ]
+            for mp in mirror_paths:
+                if mp != self.config_path and mp.parent.exists():
+                    try:
+                        with open(mp, "w", encoding="utf-8") as mf:
+                            json.dump(self.config, mf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[ConfigManager] 保存失敗: {e}")
 
