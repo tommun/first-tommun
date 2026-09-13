@@ -3,6 +3,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from title_utils import clean_game_name
 
 DEFAULT_CONFIG_FILE = "launcher_config.json"
 
@@ -190,10 +191,24 @@ class ConfigManager:
                 self.save()
                 return existing_by_path["id"]
 
-        # 4. 新規追加
+        # 4. 正規化タイトル照合（同一ゲーム名での重複防止）
+        target_name = game_data.get("name", "").strip()
+        if target_name:
+            norm_target = clean_game_name(target_name).lower()
+            if len(norm_target) >= 2 and norm_target not in ["game", "start", "app", "play"]:
+                for g in self.games:
+                    g_norm = clean_game_name(g.get("name", "")).lower()
+                    if g_norm == norm_target:
+                        g.update(game_data)
+                        game_data["id"] = g["id"]
+                        self.save()
+                        return g["id"]
+
+        # 5. 新規追加
         self.config["games"].append(game_data)
         self.save()
         return game_data["id"]
+
 
     def remove_game(self, game_id: str) -> bool:
         initial_len = len(self.config["games"])

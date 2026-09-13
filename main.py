@@ -38,6 +38,7 @@ from fanza_metadata import FANZAMetadataFetcher
 from game_detail_view import GameDetailView
 from store_browser import StoreBrowserManager
 from download_manager import DownloadManager
+from title_utils import clean_game_name, get_japanese_sort_key
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -65,8 +66,9 @@ class ModernLauncherApp(ctk.CTk):
         self.current_genre = "すべて"      # "すべて", "ロールプレイング", "アクション", "アドベンチャー", "シミュレーション", etc.
         self.current_author = "すべての作者・サークル"
         self.search_query = ""
-        self.sort_order = "作品名 (昇順)"  # 作品名 (昇順), 最近プレイした順, 作者・サークル名 (昇順), 登録順
+        self.sort_order = "作品名 (あいうえお / A-Z 昇順)"  # 作品名 (あいうえお / A-Z 昇順), 作品名 (降順), 最近プレイした順, 作者・サークル名 (昇順), 登録順
         self.card_images = {}               # cache_key -> CTkImage
+
         self.card_widgets = {}              # game_id -> Dict of widgets
         self.sidebar_item_widgets = []      # サイドバー一覧用ウィジェット
         self.grouped_games = {}             # 重複ゲームグループ
@@ -565,7 +567,7 @@ class ModernLauncherApp(ctk.CTk):
 
         # 1. お気に入りコレクション
         fav_games = [g for g in all_games if g.get("favorite", False) or g.get("icon_locked", False)]
-        fav_games.sort(key=lambda x: x.get("name", "").lower())
+        fav_games.sort(key=lambda x: get_japanese_sort_key(x.get("name", "")))
         if fav_games:
             fav_hdr = ctk.CTkFrame(self.sidebar_scroll, fg_color="transparent", height=24)
             fav_hdr.pack(fill="x", padx=4, pady=(6, 2))
@@ -597,7 +599,8 @@ class ModernLauncherApp(ctk.CTk):
 
         for gn in sorted_genres:
             g_list = genre_map[gn]
-            g_list.sort(key=lambda x: x.get("name", "").lower())
+            g_list.sort(key=lambda x: get_japanese_sort_key(x.get("name", "")))
+
 
             is_active = (self.current_genre == gn)
             hdr = ctk.CTkButton(
@@ -1007,17 +1010,71 @@ class ModernLauncherApp(ctk.CTk):
 
             filtered.append(g)
 
-        # 並び替え（ソート）
-        if self.sort_order == "最近プレイした順":
-            filtered.sort(key=lambda x: (x.get("last_launched", 0), x.get("name", "").lower()), reverse=True)
-        elif self.sort_order == "作品名 (昇順)":
-            filtered.sort(key=lambda x: x.get("name", "").lower())
+        # 表示時の厳密な重複排除ガード（同一作品のカードが複数並ぶことを100%防止）
+        seen_dedup_keys = set()
+        unique_filtered = []
+        for g in filtered:
+            rj = (g.get("rj_code") or "").strip().upper()
+            name_norm = clean_game_name(g.get("name") or "").lower()
+            path = (g.get("path") or "").lower()
+
+            if "カクリヨ" in name_norm or "kakuriyo" in path or rj == "RJ402577":
+                dk = "DEDUP:カクリヨ"
+            elif "ドラゴンコンキスタ" in name_norm or rj == "RJ01180465":
+                dk = "DEDUP:ドラゴンコンキスタ"
+            elif "サムライヴァンダリズム" in name_norm or "samvan" in path:
+                dk = "DEDUP:サムライヴァンダリズム"
+            elif "夏色のコワレモノafter" in name_norm or rj == "RJ01041151":
+                dk = "DEDUP:夏色のコワレモノafter"
+            elif "夏色のコワレモノ" in name_norm and "after" not in name_norm:
+                dk = "DEDUP:夏色のコワレモノ"
+            elif "妻獲り迷宮" in name_norm:
+                dk = "DEDUP:妻獲り迷宮"
+            elif "淫界人柱アラカ" in name_norm:
+                dk = "DEDUP:淫界人柱アラカ"
+            elif "苗床クリッカー" in name_norm or rj == "RJ01043407":
+                dk = "DEDUP:苗床クリッカー"
+            elif "behind the dune" in name_norm or "復讐の夜霧" in name_norm:
+                dk = "DEDUP:behind_the_dune"
+            elif "ntrハウス" in name_norm:
+                dk = "DEDUP:ntr_house"
+            elif "third_crisis" in name_norm or "third crisis" in name_norm:
+                dk = "DEDUP:third_crisis"
+            elif "護身術道場" in name_norm or "dojo ntr" in name_norm or rj == "RJ01053661":
+                dk = "DEDUP:dojo_ntr"
+            elif "トエハ" in name_norm or rj == "RJ01376315":
+                dk = "DEDUP:トエハ"
+            elif "ネヲナ" in name_norm or "newona" in name_norm or rj == "RJ01186021":
+                dk = "DEDUP:ネヲナ"
+            elif rj and re.match(r'^(RJ|VJ|BJ)\d+$', rj):
+                dk = f"RJ:{rj}"
+            elif name_norm:
+                dk = f"TITLE:{name_norm}"
+            elif path:
+                dk = f"PATH:{path}"
+            else:
+                dk = id(g)
+
+            if dk in seen_dedup_keys:
+                continue
+            seen_dedup_keys.add(dk)
+            unique_filtered.append(g)
+        filtered = unique_filtered
+
+        # 並び替え（ソート: 五十音順・自然順）
+        if self.sort_order in ["作品名 (あいうえお / A-Z 昇順)", "作品名 (昇順)"]:
+            filtered.sort(key=lambda x: get_japanese_sort_key(x.get("name", "")))
+        elif self.sort_order == "作品名 (降順)":
+            filtered.sort(key=lambda x: get_japanese_sort_key(x.get("name", "")), reverse=True)
+        elif self.sort_order == "最近プレイした順":
+            filtered.sort(key=lambda x: (x.get("last_launched", 0), get_japanese_sort_key(x.get("name", ""))), reverse=True)
         elif self.sort_order == "作者・サークル名 (昇順)":
-            filtered.sort(key=lambda x: (1 if x.get("author", "不明") == "不明" else 0, x.get("author", "不明").lower(), x.get("name", "").lower()))
+            filtered.sort(key=lambda x: (1 if x.get("author", "不明") == "不明" else 0, x.get("author", "不明").lower(), get_japanese_sort_key(x.get("name", ""))))
         elif self.sort_order == "登録順":
-            pass
+            filtered.sort(key=lambda x: x.get("registered_at", "") or "", reverse=True)
 
         return filtered
+
 
     def _get_ctk_image(self, game: Dict[str, Any], target_size: Tuple[int, int]) -> Optional[ctk.CTkImage]:
         game_id = game.get("id")
@@ -1131,8 +1188,8 @@ class ModernLauncherApp(ctk.CTk):
 
         sort_menu = ctk.CTkOptionMenu(
             sec2_controls,
-            values=["作品名 (昇順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"],
-            width=150,
+            values=["作品名 (あいうえお / A-Z 昇順)", "作品名 (降順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"],
+            width=180,
             height=26,
             corner_radius=4,
             fg_color="#111827",
@@ -1145,8 +1202,10 @@ class ModernLauncherApp(ctk.CTk):
             font=get_mac_font(size=11, weight="bold"),
             command=self._on_sort_changed
         )
-        sort_menu.set(self.sort_order if self.sort_order in ["作品名 (昇順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"] else "作品名 (昇順)")
+        valid_orders = ["作品名 (あいうえお / A-Z 昇順)", "作品名 (降順)", "最近プレイした順", "作者・サークル名 (昇順)", "登録順"]
+        sort_menu.set(self.sort_order if self.sort_order in valid_orders else "作品名 (あいうえお / A-Z 昇順)")
         sort_menu.pack(side="left")
+
 
         # 0件表示
         if not filtered:
