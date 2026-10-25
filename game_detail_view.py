@@ -10,6 +10,7 @@ from typing import Dict, Any, Callable, Optional, List
 from save_script_detector import SaveScriptDetector
 from dlsite_metadata import DLsiteMetadataFetcher
 from fanza_metadata import FANZAMetadataFetcher
+from font_manager import get_mac_font, get_display_font
 
 class GameDetailView(ctk.CTkFrame):
     """
@@ -60,7 +61,7 @@ class GameDetailView(ctk.CTkFrame):
             fg_color="#1e293b",
             hover_color="#334155",
             text_color="#38bdf8",
-            font=("Segoe UI", 12, "bold"),
+            font=get_mac_font(size=12, weight="bold"),
             width=140,
             height=32
         )
@@ -72,7 +73,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             nav_frame,
             text=f"ライブラリ > {title_short}",
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#64748b"
         ).pack(side="left", padx=8)
 
@@ -112,7 +113,7 @@ class GameDetailView(ctk.CTkFrame):
             text=f"  {plat}  ",
             fg_color=plat_color,
             text_color="#0f172a",
-            font=("Segoe UI", 10, "bold"),
+            font=get_mac_font(size=10, weight="bold"),
             corner_radius=4
         ).pack(side="left", padx=(0, 8))
 
@@ -122,7 +123,7 @@ class GameDetailView(ctk.CTkFrame):
             text=f"  {genre}  ",
             fg_color="#1e293b",
             text_color="#94a3b8",
-            font=("Segoe UI", 10),
+            font=get_mac_font(size=10),
             corner_radius=4
         ).pack(side="left", padx=(0, 8))
 
@@ -133,7 +134,7 @@ class GameDetailView(ctk.CTkFrame):
                 text=f" {rj} ",
                 fg_color="#0284c7",
                 text_color="#ffffff",
-                font=("Segoe UI", 10, "bold"),
+                font=get_mac_font(size=10, weight="bold"),
                 corner_radius=4
             ).pack(side="left")
 
@@ -155,7 +156,7 @@ class GameDetailView(ctk.CTkFrame):
             text=f"  {spec_label}  ",
             fg_color=s_bg,
             text_color=s_tc,
-            font=("Segoe UI", 10, "bold"),
+            font=get_mac_font(size=10, weight="bold"),
             corner_radius=4
         ).pack(side="left", padx=(8, 0))
 
@@ -163,7 +164,7 @@ class GameDetailView(ctk.CTkFrame):
         title_label = ctk.CTkLabel(
             info_col,
             text=self.game.get("name", "名称未設定"),
-            font=("Segoe UI", 20, "bold"),
+            font=get_display_font(size=20, weight="bold"),
             text_color="#f8fafc",
             anchor="w",
             justify="left",
@@ -176,7 +177,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             info_col,
             text=f"メーカー / サークル: {author}",
-            font=("Segoe UI", 12),
+            font=get_mac_font(size=12),
             text_color="#94a3b8",
             anchor="w"
         ).pack(fill="x", anchor="w", pady=(0, 12))
@@ -195,7 +196,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#06b6d4",
                 hover_color="#0891b2",
                 text_color="#0b0f19",
-                font=("Segoe UI", 15, "bold"),
+                font=get_mac_font(size=15, weight="bold"),
                 width=160,
                 height=44,
                 corner_radius=6
@@ -208,7 +209,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#10b981",
                 hover_color="#059669",
                 text_color="#ffffff",
-                font=("Segoe UI", 13, "bold"),
+                font=get_mac_font(size=13, weight="bold"),
                 width=190,
                 height=44,
                 corner_radius=6
@@ -223,7 +224,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             stats_frame,
             text=f"最終プレイ日: {last_play}",
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#94a3b8",
             anchor="w"
         ).pack(anchor="w")
@@ -233,7 +234,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             stats_frame,
             text=f"総プレイ時間: {play_time_str}",
-            font=("Segoe UI", 12, "bold"),
+            font=get_mac_font(size=12, weight="bold"),
             text_color="#38bdf8",
             anchor="w"
         ).pack(anchor="w")
@@ -249,7 +250,7 @@ class GameDetailView(ctk.CTkFrame):
             fg_color="#1e293b",
             hover_color="#334155",
             text_color="#e2e8f0",
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             width=85,
             height=32
         ).pack(side="left", padx=4)
@@ -262,7 +263,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#1e293b",
                 hover_color="#334155",
                 text_color="#38bdf8",
-                font=("Segoe UI", 11),
+                font=get_mac_font(size=11),
                 width=75,
                 height=32
             ).pack(side="left", padx=4)
@@ -275,7 +276,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#1e293b",
                 hover_color="#334155",
                 text_color="#94a3b8",
-                font=("Segoe UI", 12),
+                font=get_mac_font(size=12),
                 width=36,
                 height=32
             ).pack(side="left", padx=4)
@@ -308,7 +309,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             save_card,
             text="💾  セーブデータ＆進捗状況",
-            font=("Segoe UI", 13, "bold"),
+            font=get_mac_font(size=13, weight="bold"),
             text_color="#38bdf8"
         ).pack(anchor="w", padx=16, pady=(12, 6))
 
@@ -324,7 +325,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             save_card,
             text=info_text,
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#cbd5e1",
             justify="left",
             anchor="w"
@@ -341,7 +342,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#1e293b",
                 hover_color="#334155",
                 text_color="#f8fafc",
-                font=("Segoe UI", 11),
+                font=get_mac_font(size=11),
                 height=30
             ).pack(side="left")
 
@@ -352,7 +353,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             script_card,
             text="🛠️  スクリプト / MOD / 改造スイッチ",
-            font=("Segoe UI", 13, "bold"),
+            font=get_mac_font(size=13, weight="bold"),
             text_color="#a855f7"
         ).pack(anchor="w", padx=16, pady=(12, 6))
 
@@ -365,7 +366,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             script_card,
             text=eng_text,
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#cbd5e1",
             justify="left",
             anchor="w"
@@ -382,7 +383,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#1e293b",
                 hover_color="#334155",
                 text_color="#e2e8f0",
-                font=("Segoe UI", 11),
+                font=get_mac_font(size=11),
                 height=30
             ).pack(side="left", padx=(0, 8))
 
@@ -394,7 +395,7 @@ class GameDetailView(ctk.CTkFrame):
                 fg_color="#4338ca",
                 hover_color="#4f46e5",
                 text_color="#ffffff",
-                font=("Segoe UI", 11),
+                font=get_mac_font(size=11),
                 height=30
             ).pack(side="left")
 
@@ -416,7 +417,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             header_frame,
             text="💻  要求PCスペック・実行環境",
-            font=("Segoe UI", 13, "bold"),
+            font=get_mac_font(size=13, weight="bold"),
             text_color="#38bdf8"
         ).pack(side="left")
 
@@ -427,7 +428,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             header_frame,
             text=f" {spec_label} ",
-            font=("Segoe UI", 10, "bold"),
+            font=get_mac_font(size=10, weight="bold"),
             fg_color=badge_bg,
             text_color=badge_tc,
             corner_radius=4
@@ -445,7 +446,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             spec_card,
             text="\n".join(lines),
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#cbd5e1",
             justify="left",
             anchor="w"
@@ -458,7 +459,7 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             info_card,
             text="📋  作品概要＆タグ",
-            font=("Segoe UI", 13, "bold"),
+            font=get_mac_font(size=13, weight="bold"),
             text_color="#f8fafc"
         ).pack(anchor="w", padx=16, pady=(12, 6))
 
@@ -474,7 +475,7 @@ class GameDetailView(ctk.CTkFrame):
                     text=f" #{t} ",
                     fg_color="#1e293b",
                     text_color="#94a3b8",
-                    font=("Segoe UI", 10),
+                    font=get_mac_font(size=10),
                     corner_radius=4
                 ).pack(side="left", padx=(0, 4), pady=2)
 
@@ -485,7 +486,7 @@ class GameDetailView(ctk.CTkFrame):
         self.desc_label = ctk.CTkLabel(
             info_card,
             text=desc,
-            font=("Segoe UI", 11),
+            font=get_mac_font(size=11),
             text_color="#94a3b8",
             wraplength=380,
             justify="left",
@@ -503,14 +504,14 @@ class GameDetailView(ctk.CTkFrame):
         ctk.CTkLabel(
             header_row,
             text="🖼️  スクリーンショット・メディア",
-            font=("Segoe UI", 13, "bold"),
+            font=get_mac_font(size=13, weight="bold"),
             text_color="#38bdf8"
         ).pack(side="left")
 
         self.status_label = ctk.CTkLabel(
             header_row,
             text="",
-            font=("Segoe UI", 10),
+            font=get_mac_font(size=10),
             text_color="#64748b"
         )
         self.status_label.pack(side="right")
@@ -542,7 +543,7 @@ class GameDetailView(ctk.CTkFrame):
                     return
             except Exception:
                 pass
-        self.cover_label.configure(text="NO IMAGE\n(公式画像未取得)", font=("Segoe UI", 11), text_color="#64748b")
+        self.cover_label.configure(text="NO IMAGE\n(公式画像未取得)", font=get_mac_font(size=11), text_color="#64748b")
 
     def _format_play_time(self, seconds: int) -> str:
         if seconds <= 0:

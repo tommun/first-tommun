@@ -30,7 +30,7 @@ from comparison_dialog import ComparisonDialog
 from icon_picker_dialog import IconPickerDialog
 from folder_manager_dialog import FolderManagerDialog
 from game_edit_dialog import GameEditDialog
-from font_manager import get_mac_font, get_mac_font_family
+from font_manager import get_mac_font, get_mac_font_family, get_display_font
 from datetime import datetime
 from dlsite_metadata import DLsiteMetadataFetcher
 from dlsite_purchase_dialog import DLsitePurchaseDialog
@@ -1174,7 +1174,7 @@ class ModernLauncherApp(ctk.CTk):
                 ctk.CTkLabel(
                     sec1_header,
                     text="⚡ RECENT ACTIVITY // 最近のプレイ",
-                    font=get_mac_font(size=14, weight="bold"),
+                    font=get_display_font(size=14, weight="bold"),
                     text_color="#00f0ff"
                 ).pack(side="left")
 
@@ -1207,7 +1207,7 @@ class ModernLauncherApp(ctk.CTk):
         ctk.CTkLabel(
             sec2_header,
             text=header_title,
-            font=get_mac_font(size=14, weight="bold"),
+            font=get_display_font(size=14, weight="bold"),
             text_color="#f8fafc"
         ).pack(side="left")
 
