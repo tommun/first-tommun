@@ -1,3 +1,4 @@
+from gemini_icon_finder import GeminiIconFinder
 import os
 import sys
 import time
@@ -378,6 +379,58 @@ class IconHelper:
         existing_quality = game_data.get("icon_quality", QUALITY_NONE)
         if cache_path.exists() and existing_quality >= QUALITY_DLSITE_OFFICIAL:
             return str(cache_path), existing_quality
+
+        # 3.5 Gemini AI による超高精度タイトル解析・RJコード特定（APIキー設定時）
+        if allow_web_search and GeminiIconFinder.is_available():
+            try:
+                ai_info = GeminiIconFinder.analyze_game_info(
+                    title=name,
+                    folder_path=folder_path,
+                    exe_path=exe_path,
+                    author=author
+                )
+                if ai_info:
+                    # A. AIがRJ/VJコードを特定できた場合 -> DLsite公式最高画質ジャケットを取得
+                    ai_rj = ai_info.get("rj_code")
+                    if ai_rj:
+                        dlsite_img_url = self.fetch_dlsite_thumbnail_by_rj(ai_rj)
+                        if dlsite_img_url:
+                            img = self.download_image(dlsite_img_url)
+                            if img:
+                                saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                                if not game_data.get("rj_code"):
+                                    game_data["rj_code"] = ai_rj
+                                if ai_info.get("author") and (not game_data.get("author") or game_data.get("author") == "不明"):
+                                    game_data["author"] = ai_info["author"]
+                                return saved_path, QUALITY_DLSITE_OFFICIAL
+
+                    # B. AIが導き出した最適検索クエリでDLsite内検索
+                    ai_keywords = list(ai_info.get("search_keywords", []))
+                    formal_title = ai_info.get("formal_title")
+                    if formal_title and formal_title not in ai_keywords:
+                        ai_keywords.insert(0, formal_title)
+
+                    for q in ai_keywords:
+                        dlsite_img_url = self.search_dlsite_thumbnail_by_query(q)
+                        if dlsite_img_url:
+                            img = self.download_image(dlsite_img_url)
+                            if img:
+                                saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                                return saved_path, QUALITY_DLSITE_OFFICIAL
+
+                    # C. Web画像検索へのAIキーワード適用
+                    for q in ai_keywords[:2]:
+                        try:
+                            urls = self.search_web_icons(q, max_results=1)
+                            if urls:
+                                img = self.download_image(urls[0])
+                                if img:
+                                    saved_path = self.cache_image(f"{name}_{exe_path}", img)
+                                    return saved_path, QUALITY_BING_GENERIC
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[IconHelper] Gemini AI 検索フォールバック: {e}")
 
         # 4. DLsite公式サムネイル探索（クエリバリエーションを網羅）
         if allow_web_search:

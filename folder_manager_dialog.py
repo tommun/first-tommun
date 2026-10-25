@@ -17,8 +17,8 @@ class FolderManagerDialog(ctk.CTkToplevel):
         self.on_scan_complete = on_scan_complete
 
         self.title("📁 ライブラリフォルダ管理")
-        self.geometry("680x500")
-        self.minsize(580, 400)
+        self.geometry("680x640")
+        self.minsize(580, 520)
         self.configure(fg_color="#080b11")
 
         self.grab_set()
@@ -235,3 +235,38 @@ class FolderManagerDialog(ctk.CTkToplevel):
             text_color="#2b7a4b"
         )
         self.on_scan_complete()
+
+    def _toggle_api_key_visibility(self):
+        self.show_key_var = not self.show_key_var
+        self.api_key_entry.configure(show="" if self.show_key_var else "*")
+
+    def _test_gemini_api(self):
+        key = self.api_key_entry.get().strip()
+        if not key:
+            messagebox.showwarning("入力確認", "Gemini API キーを入力してください。")
+            return
+        from gemini_icon_finder import GeminiIconFinder
+        self.test_api_btn.configure(text="通信中...", state="disabled")
+        def worker():
+            ok, msg = GeminiIconFinder.test_connection(key)
+            def done():
+                self.test_api_btn.configure(text="接続テスト", state="normal")
+                if ok:
+                    messagebox.showinfo("接続成功", msg)
+                else:
+                    messagebox.showerror("接続失敗", msg)
+            self.after(0, done)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _save_gemini_api_key(self):
+        key = self.api_key_entry.get().strip()
+        if "settings" not in self.config_mgr.config:
+            self.config_mgr.config["settings"] = {}
+        self.config_mgr.config["settings"]["gemini_api_key"] = key
+        self.config_mgr.save()
+        is_ai_on = bool(key)
+        self.ai_status_badge.configure(
+            text="● 有効 (高精度AIモード)" if is_ai_on else "○ 未設定 (通常モード)",
+            text_color="#00ff9d" if is_ai_on else "#94a3b8"
+        )
+        messagebox.showinfo("設定完了", "Gemini API キーを保存しました！\n今後のタイトル検索・サムネイル取得で高精度AI解析が自動適用されます。")

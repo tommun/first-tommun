@@ -52,16 +52,30 @@ class IconPickerDialog(ctk.CTkToplevel):
         self.search_entry.insert(0, self.current_name)
         self.search_entry.bind("<Return>", lambda e: self._start_search())
 
+        self.ai_btn = ctk.CTkButton(
+            search_row,
+            text="✨ AI解析検索",
+            width=110,
+            height=35,
+            corner_radius=8,
+            fg_color="#00f0ff",
+            hover_color="#00c8d6",
+            text_color="#080b11",
+            font=get_mac_font(size=12, weight="bold"),
+            command=self._start_ai_search
+        )
+        self.ai_btn.pack(side="left", padx=(0, 8))
+
         self.search_btn = ctk.CTkButton(
             search_row,
             text="Web検索",
-            width=90,
+            width=85,
             height=35,
             corner_radius=8,
             font=get_mac_font(size=12, weight="bold"),
             command=self._start_search
         )
-        self.search_btn.pack(side="left", padx=(0, 10))
+        self.search_btn.pack(side="left", padx=(0, 8))
 
         self.local_file_btn = ctk.CTkButton(
             search_row,
@@ -178,3 +192,51 @@ class IconPickerDialog(ctk.CTkToplevel):
                 self.destroy()
             except Exception as e:
                 messagebox.showerror("エラー", f"画像の読み込みに失敗しました:\n{e}")
+
+    def _start_ai_search(self):
+        """Gemini AI にタイトル解析を依頼し、正式タイトルやRJコードから最適なジャケットを探索"""
+        from gemini_icon_finder import GeminiIconFinder
+
+        if not GeminiIconFinder.is_available():
+            messagebox.showinfo(
+                "Gemini API 未設定",
+                "Gemini AI 連携が未設定です。\nメイン画面上部の「📁 フォルダ管理」から Gemini API キーを設定すると、AIによるタイトル・RJコードの超高精度同定が有効になります。"
+            )
+            return
+
+        query = self.search_entry.get().strip()
+        self.status_lbl.configure(text="🤖 Gemini AI がタイトルを解析中...", text_color="#00f0ff")
+        self.ai_btn.configure(state="disabled")
+
+        def worker():
+            info = GeminiIconFinder.analyze_game_info(
+                title=query,
+                exe_path=self.current_exe
+            )
+            def done():
+                self.ai_btn.configure(state="normal")
+                if not info:
+                    self.status_lbl.configure(text="AI解析に失敗しました。通常の検索を実行します。", text_color="#f87171")
+                    self._start_search()
+                    return
+
+                formal = info.get("formal_title") or query
+                rj = info.get("rj_code")
+                author = info.get("author") or ""
+
+                status_msg = f"✨ AI特定: 『{formal}』"
+                if rj:
+                    status_msg += f" (作品ID: {rj})"
+                if author:
+                    status_msg += f" [作者: {author}]"
+                self.status_lbl.configure(text=status_msg, text_color="#00ff9d")
+
+                # 検索窓を正式名称またはRJコードに自動更新
+                search_target = rj if rj else formal
+                self.search_entry.delete(0, "end")
+                self.search_entry.insert(0, search_target)
+                self._start_search()
+
+            self.after(0, done)
+
+        threading.Thread(target=worker, daemon=True).start()
