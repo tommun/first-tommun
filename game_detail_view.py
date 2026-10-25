@@ -137,6 +137,28 @@ class GameDetailView(ctk.CTkFrame):
                 corner_radius=4
             ).pack(side="left")
 
+        # 要求PCスペックバッジ
+        spec_level = self.game.get("spec_level", "Light")
+        spec_label = self.game.get("spec_label", "🍃 軽量級 (低負荷/2D)")
+        if spec_level == "Heavy":
+            s_bg = "#3b1022"
+            s_tc = "#ff2a5f"
+        elif spec_level == "Medium":
+            s_bg = "#0c283f"
+            s_tc = "#38bdf8"
+        else:
+            s_bg = "#0a2e1d"
+            s_tc = "#00ff9d"
+
+        ctk.CTkLabel(
+            badge_frame,
+            text=f"  {spec_label}  ",
+            fg_color=s_bg,
+            text_color=s_tc,
+            font=("Segoe UI", 10, "bold"),
+            corner_radius=4
+        ).pack(side="left", padx=(8, 0))
+
         # ゲームタイトル
         title_label = ctk.CTkLabel(
             info_col,
@@ -269,6 +291,7 @@ class GameDetailView(ctk.CTkFrame):
         left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         self._build_save_and_script_cards(left_panel)
+        self._build_spec_card(left_panel)
         self._build_info_card(left_panel)
 
         # 右カラム: スクリーンショット ギャラリー
@@ -374,6 +397,59 @@ class GameDetailView(ctk.CTkFrame):
                 font=("Segoe UI", 11),
                 height=30
             ).pack(side="left")
+
+    def _build_spec_card(self, parent):
+        """要求PCスペック・実行環境判定カード"""
+        spec_card = ctk.CTkFrame(parent, fg_color="#131c2e", corner_radius=10, border_width=1, border_color="#1e293b")
+        spec_card.pack(fill="x", pady=(0, 12))
+
+        # ヘッダー
+        spec_level = self.game.get("spec_level", "Light")
+        spec_label = self.game.get("spec_label", "🍃 軽量級 (低負荷/2D)")
+        engine = self.game.get("engine", "標準PCゲーム")
+        gpu_req = self.game.get("gpu_required", False)
+        rec_spec = self.game.get("recommended_spec", "オンボードGPU / 低スペックPCで快適動作")
+
+        header_frame = ctk.CTkFrame(spec_card, fg_color="transparent")
+        header_frame.pack(fill="x", padx=16, pady=(12, 6))
+
+        ctk.CTkLabel(
+            header_frame,
+            text="💻  要求PCスペック・実行環境",
+            font=("Segoe UI", 13, "bold"),
+            text_color="#38bdf8"
+        ).pack(side="left")
+
+        # バッジ右寄せ
+        badge_tc = "#ff2a5f" if spec_level == "Heavy" else ("#38bdf8" if spec_level == "Medium" else "#00ff9d")
+        badge_bg = "#3b1022" if spec_level == "Heavy" else ("#0c283f" if spec_level == "Medium" else "#0a2e1d")
+
+        ctk.CTkLabel(
+            header_frame,
+            text=f" {spec_label} ",
+            font=("Segoe UI", 10, "bold"),
+            fg_color=badge_bg,
+            text_color=badge_tc,
+            corner_radius=4
+        ).pack(side="right")
+
+        gpu_status_str = "⚠️ 独立GPU (グラフィックボード) 必須・推奨" if gpu_req else "✅ オンボードGPU / 低負荷 (GPU不要)"
+        gpu_color = "#f43f5e" if gpu_req else "#10b981"
+
+        lines = [
+            f"・ゲームエンジン: {engine}",
+            f"・グラフィックス負荷: {gpu_status_str}",
+            f"・推奨動作環境: {rec_spec}"
+        ]
+
+        ctk.CTkLabel(
+            spec_card,
+            text="\n".join(lines),
+            font=("Segoe UI", 11),
+            text_color="#cbd5e1",
+            justify="left",
+            anchor="w"
+        ).pack(anchor="w", padx=16, pady=(0, 12))
 
     def _build_info_card(self, parent):
         info_card = ctk.CTkFrame(parent, fg_color="#131c2e", corner_radius=10, border_width=1, border_color="#1e293b")

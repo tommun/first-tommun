@@ -65,6 +65,7 @@ class ModernLauncherApp(ctk.CTk):
         self.current_platform = "すべて"   # "すべて", "DLsite", "FANZA", "その他", "お気に入り"
         self.current_genre = "すべて"      # "すべて", "ロールプレイング", "アクション", "アドベンチャー", "シミュレーション", etc.
         self.current_author = "すべての作者・サークル"
+        self.current_spec = "すべて"        # "すべて", "⚡ 重量級 (要GPU)", "⚖️ 中量級 (標準負荷)", "🍃 軽量級 (低負荷/2D)"
         self.search_query = ""
         self.sort_order = "作品名 (あいうえお / A-Z 昇順)"  # 作品名 (あいうえお / A-Z 昇順), 作品名 (降順), 最近プレイした順, 作者・サークル名 (昇順), 登録順
         self.card_images = {}               # cache_key -> CTkImage
@@ -709,10 +710,19 @@ class ModernLauncherApp(ctk.CTk):
                     for info in z.infolist():
                         total_uncompressed += info.file_size
 
-                # 2GB (2 * 1024^3 bytes) をしきい値として判定
-                is_heavy = total_uncompressed >= (2 * 1024 * 1024 * 1024)
+                # 要求PCスペック（GPU負荷/3Dエンジン/2D）を基準に保存先・負荷レベルを判定
+                namelist = []
+                with zipfile.ZipFile(str(zip_path), 'r') as z_scan:
+                    namelist = [info.filename for info in z_scan.infolist()]
+                
+                spec_info = GameAnalyzer.detect_spec_from_namelist(
+                    namelist=namelist,
+                    name=zip_path.stem,
+                    total_size_bytes=total_uncompressed
+                )
+                is_heavy = (spec_info["spec_level"] == "Heavy")
                 target_root = r"C:\Games\HeavyLibrary" if is_heavy else r"D:\Games\LightLibrary"
-                drive_name = "Cドライブ (高速SSD / 重いゲーム)" if is_heavy else "Dドライブ (大容量HDD / 軽いゲーム)"
+                drive_name = f"Cドライブ (高速SSD / {spec_info['spec_label']})" if is_heavy else f"Dドライブ (大容量HDD / {spec_info['spec_label']})"
                 size_mb = total_uncompressed / (1024 * 1024)
 
                 # フォルダ名の決定 (RJコードがあればRJコード、なければZIPファイル名)
@@ -769,6 +779,11 @@ class ModernLauncherApp(ctk.CTk):
 
                 for item in detected:
                     item["is_installed"] = True
+                    item.setdefault("spec_level", spec_info["spec_level"])
+                    item.setdefault("spec_label", spec_info["spec_label"])
+                    item.setdefault("engine", spec_info["engine"])
+                    item.setdefault("gpu_required", spec_info["gpu_required"])
+                    item.setdefault("recommended_spec", spec_info["recommended_spec"])
                     self.config_mgr.add_or_update_game(item)
 
                 self.after(0, lambda: self._on_zip_extracted_done(zip_path.name, len(detected), drive_name, extract_dest))
@@ -952,6 +967,10 @@ class ModernLauncherApp(ctk.CTk):
             first_game = filtered[0]
             self._launch_game(first_game)
 
+    def _on_spec_filter_changed(self, choice: str):
+        self.current_spec = choice
+        self.refresh_games()
+
     def _on_author_filter_changed(self, choice: str):
         self.current_author = choice
         self.refresh_games()
@@ -990,6 +1009,23 @@ class ModernLauncherApp(ctk.CTk):
             if self.current_author != "すべての作者・サークル":
                 g_author = g.get("author", "不明")
                 if g_author != self.current_author:
+                    continue
+
+            # 3.5 要求PCスペック絞り込み (すべて / ⚡ 重量級 / ⚖️ 中量級 / 🍃 軽量級)
+            if self.current_spec != "すべて":
+                g_spec = g.get("spec_level")
+                if not g_spec:
+                    s_info = GameAnalyzer.detect_pc_spec(g.get("path"), g.get("exe_path"), tags=g.get("tags"), genre=g.get("genre", ""), name=g.get("name", ""))
+                    g_spec = s_info["spec_level"]
+                    g["spec_level"] = g_spec
+                    g["spec_label"] = s_info["spec_label"]
+                    g["engine"] = s_info["engine"]
+
+                if "重量" in self.current_spec and g_spec != "Heavy":
+                    continue
+                elif "中量" in self.current_spec and g_spec != "Medium":
+                    continue
+                elif "軽量" in self.current_spec and g_spec != "Light":
                     continue
 
             # 4. リアルタイム検索クエリ絞り込み（作品名、作者、パス、RJコード、ジャンル、タグ全対象）
@@ -1206,6 +1242,34 @@ class ModernLauncherApp(ctk.CTk):
         sort_menu.set(self.sort_order if self.sort_order in valid_orders else "作品名 (あいうえお / A-Z 昇順)")
         sort_menu.pack(side="left")
 
+        # 要求PCスペック絞り込みフィルター
+        ctk.CTkLabel(
+            sec2_controls,
+            text="SPEC:",
+            font=get_mac_font(size=11, weight="bold"),
+            text_color="#64748b"
+        ).pack(side="left", padx=(12, 6))
+
+        spec_menu = ctk.CTkOptionMenu(
+            sec2_controls,
+            values=["すべて", "⚡ 重量級 (要GPU)", "⚖️ 中量級 (標準負荷)", "🍃 軽量級 (低負荷/2D)"],
+            width=165,
+            height=26,
+            corner_radius=4,
+            fg_color="#111827",
+            button_color="#1e293b",
+            button_hover_color="#00f0ff",
+            dropdown_fg_color="#0d121d",
+            dropdown_hover_color="#1e293b",
+            dropdown_text_color="#f8fafc",
+            text_color="#00f0ff",
+            font=get_mac_font(size=11, weight="bold"),
+            command=self._on_spec_filter_changed
+        )
+        valid_specs = ["すべて", "⚡ 重量級 (要GPU)", "⚖️ 中量級 (標準負荷)", "🍃 軽量級 (低負荷/2D)"]
+        spec_menu.set(self.current_spec if self.current_spec in valid_specs else "すべて")
+        spec_menu.pack(side="left")
+
 
         # 0件表示
         if not filtered:
@@ -1294,9 +1358,35 @@ class ModernLauncherApp(ctk.CTk):
             justify="left",
             anchor="w"
         )
-        author_lbl.pack(padx=8, pady=(0, 6), fill="x")
+        author_lbl.pack(padx=8, pady=(0, 2), fill="x")
         author_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
         card.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
+
+        # 要求PCスペックバッジ
+        r_spec_lvl = game.get("spec_level", "Light")
+        if r_spec_lvl == "Heavy":
+            r_badge_t = "⚡ 重量級 (要GPU)"
+            r_badge_bg = "#2a0815"
+            r_badge_tc = "#ff4b72"
+        elif r_spec_lvl == "Medium":
+            r_badge_t = "⚖️ 中量級 (標準)"
+            r_badge_bg = "#0c1d2e"
+            r_badge_tc = "#38bdf8"
+        else:
+            r_badge_t = "🍃 軽量級 (低負荷)"
+            r_badge_bg = "#082417"
+            r_badge_tc = "#00ff9d"
+
+        r_spec_lbl = ctk.CTkLabel(
+            card,
+            text=f" {r_badge_t} ",
+            font=get_mac_font(size=9, weight="bold"),
+            text_color=r_badge_tc,
+            fg_color=r_badge_bg,
+            corner_radius=3
+        )
+        r_spec_lbl.pack(padx=8, pady=(0, 4), anchor="w")
+        r_spec_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # ネオングリーン（起動） / サイバーブルー（ダウンロード）ボタン
         is_installed = game.get("is_installed", True if game.get("path") else False)
@@ -1387,9 +1477,42 @@ class ModernLauncherApp(ctk.CTk):
             justify="left",
             anchor="w"
         )
-        author_lbl.pack(padx=8, pady=(0, 4), fill="x")
+        author_lbl.pack(padx=8, pady=(0, 2), fill="x")
         author_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
         card.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
+
+        # 要求PCスペックバッジ
+        spec_lvl = game.get("spec_level")
+        if not spec_lvl:
+            s_inf = GameAnalyzer.detect_pc_spec(game.get("path"), game.get("exe_path"), tags=game.get("tags"), genre=game.get("genre", ""), name=game.get("name", ""))
+            spec_lvl = s_inf["spec_level"]
+            game["spec_level"] = spec_lvl
+            game["spec_label"] = s_inf["spec_label"]
+            game["engine"] = s_inf["engine"]
+
+        if spec_lvl == "Heavy":
+            badge_t = "⚡ 重量級 (要GPU)"
+            badge_bg = "#2a0815"
+            badge_tc = "#ff4b72"
+        elif spec_lvl == "Medium":
+            badge_t = "⚖️ 中量級 (標準)"
+            badge_bg = "#0c1d2e"
+            badge_tc = "#38bdf8"
+        else:
+            badge_t = "🍃 軽量級 (低負荷)"
+            badge_bg = "#082417"
+            badge_tc = "#00ff9d"
+
+        spec_badge_lbl = ctk.CTkLabel(
+            card,
+            text=f" {badge_t} ",
+            font=get_mac_font(size=9, weight="bold"),
+            text_color=badge_tc,
+            fg_color=badge_bg,
+            corner_radius=3
+        )
+        spec_badge_lbl.pack(padx=8, pady=(0, 4), anchor="w")
+        spec_badge_lbl.bind("<Button-1>", lambda e, g=game: self._open_game_detail(g))
 
         # アクションバー: プレイ/ダウンロード ＋ フォルダボタン
         action_bar = ctk.CTkFrame(card, fg_color="transparent")

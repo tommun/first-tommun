@@ -374,3 +374,182 @@ class GameAnalyzer:
             return True, "セーブデータの移行が正常に完了しました！"
         else:
             return False, "移行対象のセーブデータが見つかりませんでした。"
+
+    @classmethod
+    def detect_spec_from_namelist(cls, namelist: List[str], tags: Optional[List[str]] = None, genre: str = "", name: str = "", total_size_bytes: int = 0) -> Dict[str, Any]:
+        """
+        ファイル名リスト（ZIP内ファイル一覧または走査リスト）から要求PCスペックを判定
+        """
+        tags_lower = [t.lower() for t in (tags or [])]
+        name_lower = (name or "").lower()
+        items_lower = [Path(n).name.lower() for n in namelist[:600]]
+        full_lower = " ".join([n.lower() for n in namelist[:600]])
+
+        # 1. Unreal Engine 4 / 5
+        if any(x in full_lower for x in ['ue4prereq', 'engine/binaries', 'engine/extras', '-win64-shipping.exe', '-shipping.exe']) or 'unreal' in full_lower:
+            return {
+                "spec_level": "Heavy",
+                "spec_label": "⚡ 重量級 (要GPU/3D)",
+                "engine": "Unreal Engine 4/5",
+                "gpu_required": True,
+                "recommended_spec": "独立GPU (GTX/RTX推奨) / Core i5以上 / RAM 8GB+"
+            }
+
+        # 2. Unity 判定
+        has_unity = any(x in items_lower for x in ['unityplayer.dll', 'unitycrashhandler32.exe', 'unitycrashhandler64.exe']) or any('_data' in x for x in items_lower)
+        if has_unity:
+            is_3d = any(t in ['3d', '3dアクション', '3dアニメーション', 'fps', 'tps', '3dおさわり'] for t in tags_lower)
+            size_gb = total_size_bytes / (1024 * 1024 * 1024) if total_size_bytes else 0
+            if is_3d or '3d' in name_lower or size_gb >= 2.5:
+                return {
+                    "spec_level": "Heavy",
+                    "spec_label": "⚡ 重量級 (要GPU/3D)",
+                    "engine": "Unity (3D)",
+                    "gpu_required": True,
+                    "recommended_spec": "GPU (GeForce/Radeon) / 3D描画対応 / RAM 8GB+"
+                }
+            else:
+                return {
+                    "spec_level": "Medium",
+                    "spec_label": "⚖️ 中量級 (標準負荷)",
+                    "engine": "Unity (2D/標準)",
+                    "gpu_required": False,
+                    "recommended_spec": "標準的なPC環境 (内蔵GPU/RAM 4GB-8GB)"
+                }
+
+        # 3. RPGツクール MV / MZ
+        if any(x in items_lower for x in ['package.json', 'nw.exe', 'nw.dll']) and any('data' in x for x in items_lower):
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (低負荷/2D)",
+                "engine": "RPGツクール MV/MZ",
+                "gpu_required": False,
+                "recommended_spec": "オンボードGPU / 低スペックPC・省電力ノートPCでも快適動作"
+            }
+
+        # 4. RPGツクール VX / VX Ace / XP
+        if any(x.startswith('rgss') and x.endswith('.dll') for x in items_lower) or any('game.rgss' in x for x in items_lower):
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (超軽量/2D)",
+                "engine": "RPGツクール VX/Ace/XP",
+                "gpu_required": False,
+                "recommended_spec": "あらゆるPCで動作可能 (GPU不要 / 低負荷)"
+            }
+
+        # 5. RPGツクール 2000 / 2003
+        if any('rpg_rt' in x for x in items_lower):
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (超軽量/2D)",
+                "engine": "RPGツクール 2000/2003",
+                "gpu_required": False,
+                "recommended_spec": "あらゆるPCで動作可能 (極小負荷)"
+            }
+
+        # 6. WOLF RPGエディター (ウディタ)
+        if any(x.endswith('.wolf') for x in items_lower) or 'data.wolf' in full_lower:
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (低負荷/2D)",
+                "engine": "WOLF RPGエディター",
+                "gpu_required": False,
+                "recommended_spec": "オンボードGPU / 低スペックPCで快適動作"
+            }
+
+        # 7. 吉里吉里 / ティラノスクリプト (ノベル・ADV)
+        if any(x.endswith('.xp3') for x in items_lower) or 'tyrano' in full_lower or 'nscript' in full_lower:
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (ノベル/超軽量)",
+                "engine": "吉里吉里 / ティラノ (ノベル)",
+                "gpu_required": False,
+                "recommended_spec": "2Dビジュアルノベル / CPU負荷最小"
+            }
+
+        # 8. Ren'Py
+        if any('renpy' in x for x in items_lower) or any(x.endswith('.rpa') for x in items_lower):
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (ノベル/軽量)",
+                "engine": "Ren'Py",
+                "gpu_required": False,
+                "recommended_spec": "Python製ノベル / オンボードGPUで軽快"
+            }
+
+        # 9. メタデータ（タグ・ジャンル）判定
+        if any(t in ['3d', '3dアクション', '3dアニメーション', 'fps', 'tps'] for t in tags_lower):
+            return {
+                "spec_level": "Heavy",
+                "spec_label": "⚡ 重量級 (要GPU/3D)",
+                "engine": "3Dネイティブ",
+                "gpu_required": True,
+                "recommended_spec": "3D描画ゲーム / 独立GPU推奨"
+            }
+
+        if any(t in ['rpg', 'ロールプレイング', 'ノベル', 'adv', 'アドベンチャー', 'パズル', 'シミュレーション', 'ドット絵'] for t in tags_lower):
+            return {
+                "spec_level": "Light",
+                "spec_label": "🍃 軽量級 (低負荷/2D)",
+                "engine": "2D汎用",
+                "gpu_required": False,
+                "recommended_spec": "2Dゲーム / 低スペックPCで快適動作"
+            }
+
+        return {
+            "spec_level": "Medium",
+            "spec_label": "⚖️ 中量級 (標準負荷)",
+            "engine": "標準PCゲーム",
+            "gpu_required": False,
+            "recommended_spec": "標準的なPC環境 (RAM 4GB+)"
+        }
+
+    @classmethod
+    def detect_pc_spec(cls, folder_path: str, exe_path: str, tags: Optional[List[str]] = None, genre: str = "", name: str = "") -> Dict[str, Any]:
+        """
+        ローカルフォルダとEXEから要求PCスペック（CPU/GPU負荷・3D/2D要求環境）を自動判定
+        """
+        if not folder_path or not os.path.exists(folder_path):
+            if exe_path and os.path.exists(exe_path):
+                folder_path = os.path.dirname(exe_path)
+            else:
+                return {
+                    "spec_level": "Light",
+                    "spec_label": "🍃 軽量級 (低負荷)",
+                    "engine": "不明",
+                    "gpu_required": False,
+                    "recommended_spec": "未インストール"
+                }
+
+        folder = Path(folder_path)
+        root_folder = folder
+        if folder.name.lower() in ['bin', 'binaries', 'win64', 'game', 'game_file', 'setup']:
+            root_folder = folder.parent
+            if root_folder.name.lower() in ['bin', 'binaries', 'win64']:
+                root_folder = root_folder.parent
+
+        namelist = []
+        total_size = 0
+        try:
+            for r, dirs, files in os.walk(str(root_folder)):
+                for d in dirs:
+                    namelist.append(d)
+                for f in files:
+                    namelist.append(f)
+                    try:
+                        total_size += os.path.getsize(os.path.join(r, f))
+                    except Exception:
+                        pass
+                if len(namelist) > 400:
+                    break
+        except Exception:
+            pass
+
+        return cls.detect_spec_from_namelist(
+            namelist=namelist,
+            tags=tags,
+            genre=genre,
+            name=name,
+            total_size_bytes=total_size
+        )
+
