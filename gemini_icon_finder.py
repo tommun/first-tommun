@@ -8,8 +8,9 @@ from pathlib import Path
 
 class GeminiIconFinder:
     """
-    Google Gemini API を活用し、ノイズの多いゲームタイトル・フォルダ名・パスから
-    正式タイトル、サークル名、RJコードを同定し、最高品質のサムネイル・ジャケット画像を高精度に引き当てるクラス
+    Google Gemini API (Interactions API / gemini-3.8-flash) を活用し、
+    ノイズの多いゲームタイトル・フォルダ名・パスから正式タイトル、サークル名、RJコードを同定し、
+    最高品質のサムネイル・ジャケット画像を高精度に引き当てるクラス
     """
 
     _cache: Dict[str, Dict[str, Any]] = {}
@@ -29,16 +30,16 @@ class GeminiIconFinder:
                 return cfg_key
 
         # 3. 直接ファイルを読み取り
-        master_path = Path(r"C:\Games\Launcher\launcher_config.json")
-        if master_path.exists():
-            try:
-                with open(master_path, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                    cfg_key = d.get("settings", {}).get("gemini_api_key", "").strip()
-                    if cfg_key:
-                        return cfg_key
-            except Exception:
-                pass
+        for p in [Path(r"C:\Games\Launcher\launcher_config.json"), Path("launcher_config.json")]:
+            if p.exists():
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                        cfg_key = d.get("settings", {}).get("gemini_api_key", "").strip()
+                        if cfg_key:
+                            return cfg_key
+                except Exception:
+                    pass
 
         return None
 
@@ -57,7 +58,7 @@ class GeminiIconFinder:
         config_mgr=None
     ) -> Optional[Dict[str, Any]]:
         """
-        Gemini 3.8 Flash を使用してゲームタイトルとメタデータを解析
+        Gemini 3.8 Flash (Interactions API) を使用してゲームタイトルとメタデータを解析
         戻り値: {
             "formal_title": "正式タイトル",
             "author": "サークル名",
@@ -77,7 +78,6 @@ class GeminiIconFinder:
 
         try:
             from google import genai
-            from google.genai import types
 
             client = genai.Client(api_key=api_key)
 
@@ -97,7 +97,7 @@ class GeminiIconFinder:
 4. search_keywords: Google画像検索やWebで公式のジャケット・パッケージ・キービジュアル画像を1発でヒットさせるための最適な検索キーワード（2〜4個）。
 5. genre: 推定されるゲームジャンル（例: アクション, ロールプレイング, アドベンチャー, シミュレーション）。
 
-必ず以下のJSONフォーマットのみを出力してください:
+必ず以下のJSONフォーマットのみ（マークダウンのコードブロックなし）で出力してください:
 {{
   "formal_title": "正式作品名",
   "author": "サークル名",
@@ -107,18 +107,17 @@ class GeminiIconFinder:
   "confidence": "highまたはmediumまたはlow"
 }}"""
 
-            config = types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2,
-            )
-
-            response = client.models.generate_content(
+            interaction = client.interactions.create(
                 model="gemini-3.8-flash",
-                contents=prompt,
-                config=config
+                input=prompt
             )
 
-            text = response.text.strip()
+            text = (interaction.output_text or "").strip()
+            # マークダウンブロックの除去
+            if text.startswith("```"):
+                text = re.sub(r'^```(?:json)?\s*', '', text)
+                text = re.sub(r'\s*```$', '', text)
+
             data = json.loads(text)
 
             # RJコードの正規化
@@ -144,16 +143,14 @@ class GeminiIconFinder:
 
         try:
             from google import genai
-            from google.genai import types
 
             client = genai.Client(api_key=api_key.strip())
-            resp = client.models.generate_content(
+            interaction = client.interactions.create(
                 model="gemini-3.8-flash",
-                contents="ping",
-                config=types.GenerateContentConfig(max_output_tokens=5)
+                input="ping"
             )
-            if resp and resp.text:
-                return True, "接続テスト成功！Gemini 3.8 Flash と正常に通信できました。"
+            if interaction and interaction.output_text:
+                return True, "接続テスト成功！Gemini 3.8 Flash (Interactions API) と正常に通信できました。"
             return False, "レスポンスが空でした。"
         except Exception as e:
             return False, f"接続エラー: {e}"
