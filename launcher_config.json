@@ -1322,6 +1322,7 @@
   "settings": {
     "auto_search_web_icon": true,
     "window_width": 1100,
-    "window_height": 720
+    "window_height": 720,
+    "gemini_api_key": ""
   }
 }

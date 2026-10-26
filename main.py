@@ -37,6 +37,7 @@ from dlsite_purchase_dialog import DLsitePurchaseDialog
 from fanza_metadata import FANZAMetadataFetcher
 from game_detail_view import GameDetailView
 from store_browser import StoreBrowserManager
+from zip_processor import ZipProcessor
 from download_manager import DownloadManager
 from title_utils import clean_game_name, get_japanese_sort_key
 
@@ -520,7 +521,7 @@ class ModernLauncherApp(ctk.CTk):
             text_color="#00f0ff",
             font=get_mac_font(size=11, weight="bold"),
             anchor="w",
-            command=self._open_add_dialog
+            command=self._open_add_menu
         )
         self.add_app_btn.pack(fill="both", padx=10, pady=3)
 
@@ -699,100 +700,25 @@ class ModernLauncherApp(ctk.CTk):
                 break
 
     def _handle_dropped_zip(self, zip_path: Path):
-        """ZIPアーカイブを解凍し、容量（2GB基準）に応じてC(重い)/D(軽い)へ展開・自動登録"""
-        self.status_lbl.configure(text=f"📦 ZIPアーカイブを解析中: {zip_path.name}...", text_color="#00f0ff")
+        """ZIPアーカイブを解凍し、要求スペックに応じてC(重い)/D(軽い)へ展開・自動登録し、元ZIPを保管庫へ自動整理"""
+        def on_status(msg, color):
+            self.after(0, lambda: self.status_lbl.configure(text=msg, text_color=color))
 
-        def worker():
-            try:
-                # 1. 展開後の推定サイズ計算
-                total_uncompressed = 0
-                with zipfile.ZipFile(str(zip_path), 'r') as z:
-                    for info in z.infolist():
-                        total_uncompressed += info.file_size
+        def on_done(res):
+            self.after(0, lambda: self._on_zip_extracted_done(res))
 
-                # 要求PCスペック（GPU負荷/3Dエンジン/2D）を基準に保存先・負荷レベルを判定
-                namelist = []
-                with zipfile.ZipFile(str(zip_path), 'r') as z_scan:
-                    namelist = [info.filename for info in z_scan.infolist()]
-                
-                spec_info = GameAnalyzer.detect_spec_from_namelist(
-                    namelist=namelist,
-                    name=zip_path.stem,
-                    total_size_bytes=total_uncompressed
-                )
-                is_heavy = (spec_info["spec_level"] == "Heavy")
-                target_root = r"C:\Games\HeavyLibrary" if is_heavy else r"D:\Games\LightLibrary"
-                drive_name = f"Cドライブ (高速SSD / {spec_info['spec_label']})" if is_heavy else f"Dドライブ (大容量HDD / {spec_info['spec_label']})"
-                size_mb = total_uncompressed / (1024 * 1024)
+        def on_error(err):
+            self.after(0, lambda: messagebox.showerror("ZIP展開エラー", f"アーカイブの展開に失敗しました:\n{err}"))
+            self.after(0, lambda: self.status_lbl.configure(text="❌ 展開エラーが発生しました", text_color="#f87171"))
 
-                # フォルダ名の決定 (RJコードがあればRJコード、なければZIPファイル名)
-                m = re.search(r'(RJ\d{6,8}|VJ\d{6,8}|BJ\d{6,8})', zip_path.name, re.IGNORECASE)
-                sub_folder_name = m.group(1).upper() if m else zip_path.stem
-                extract_dest = os.path.join(target_root, sub_folder_name)
-
-                self.after(0, lambda: self.status_lbl.configure(
-                    text=f"📦 {drive_name} へ展開中 ({size_mb:.1f} MB)...", text_color="#00ff9d"
-                ))
-
-                os.makedirs(extract_dest, exist_ok=True)
-
-                with zipfile.ZipFile(str(zip_path), 'r') as z:
-                    for member in z.infolist():
-                        fn = member.filename
-                        try:
-                            fn = fn.encode('cp437').decode('cp932')
-                        except Exception:
-                            try:
-                                fn = fn.encode('cp437').decode('utf-8')
-                            except Exception:
-                                pass
-                        target_file_path = os.path.join(extract_dest, fn)
-                        if member.is_dir():
-                            os.makedirs(target_file_path, exist_ok=True)
-                        else:
-                            os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
-                            with z.open(member) as src, open(target_file_path, "wb") as dst:
-                                shutil.copyfileobj(src, dst)
-
-                # 展開先フォルダからゲーム・EXEをスキャン
-                detected = FolderScanner.scan_library_folder(extract_dest, default_category="その他")
-                if not detected:
-                    # 簡易検出 (直下またはサブディレクトリのEXE)
-                    for eroot, edirs, efiles in os.walk(extract_dest):
-                        for ef in efiles:
-                            if ef.lower().endswith(".exe") and not any(x in ef.lower() for x in ["crash", "setup", "uninstall", "unitycrash", "update"]):
-                                exe_full = os.path.join(eroot, ef)
-                                detected.append({
-                                    "name": zip_path.stem,
-                                    "path": exe_full,
-                                    "work_dir": eroot,
-                                    "folder_path": extract_dest,
-                                    "category": "その他",
-                                    "genre": "その他",
-                                    "platform": "DLsite" if m else "その他",
-                                    "rj_code": m.group(1).upper() if m else None,
-                                    "is_installed": True
-                                })
-                                break
-                        if detected:
-                            break
-
-                for item in detected:
-                    item["is_installed"] = True
-                    item.setdefault("spec_level", spec_info["spec_level"])
-                    item.setdefault("spec_label", spec_info["spec_label"])
-                    item.setdefault("engine", spec_info["engine"])
-                    item.setdefault("gpu_required", spec_info["gpu_required"])
-                    item.setdefault("recommended_spec", spec_info["recommended_spec"])
-                    self.config_mgr.add_or_update_game(item)
-
-                self.after(0, lambda: self._on_zip_extracted_done(zip_path.name, len(detected), drive_name, extract_dest))
-
-            except Exception as ex:
-                self.after(0, lambda: messagebox.showerror("ZIP解凍エラー", f"アーカイブの展開に失敗しました:\n{ex}"))
-                self.after(0, lambda: self.status_lbl.configure(text="展開エラーが発生しました", text_color="#f87171"))
-
-        threading.Thread(target=worker, daemon=True).start()
+        ZipProcessor.process_zip_async(
+            zip_path=zip_path,
+            config_mgr=self.config_mgr,
+            icon_helper=self.icon_helper,
+            status_callback=on_status,
+            done_callback=on_done,
+            error_callback=on_error
+        )
 
     def _poll_download_status(self):
         """内蔵ブラウザからのダウンロード進捗状態を定期ポーリングしてHUD・カード・詳細画面に反映"""
@@ -850,16 +776,30 @@ class ModernLauncherApp(ctk.CTk):
 
         self.after(300, self._poll_download_status)
 
-    def _on_zip_extracted_done(self, zip_name: str, count: int, drive_name: str, dest_dir: str):
-        self.status_lbl.configure(text=f"✨ {zip_name} を {drive_name} に展開・登録完了 ({count}作品)", text_color="#00ff9d")
-        self.refresh_games()
-        messagebox.showinfo(
-            "アーカイブ展開・直接登録完了",
-            f"「{zip_name}」の展開とライブラリ登録が完了しました！\n\n"
-            f"・配置先: {drive_name}\n"
-            f"・フォルダ: {dest_dir}\n"
-            f"・登録ゲーム数: {count} 作品"
+    def _on_zip_extracted_done(self, res: Dict[str, Any]):
+        zip_name = res.get("zip_name", "")
+        formal_title = res.get("formal_title") or zip_name
+        drive_name = res.get("drive_name", "")
+        dest_dir = res.get("dest_dir", "")
+        items = res.get("game_items", [])
+        archived_path = res.get("archived_zip_path")
+
+        self.status_lbl.configure(
+            text=f"✨ 『{formal_title}』を {drive_name} に展開・登録完了 ({len(items)}作品)",
+            text_color="#00ff9d"
         )
+        self.refresh_games()
+
+        msg = (
+            f"「{formal_title}」の自動展開とライブラリ登録が完了しました！\n\n"
+            f"・配置先: {drive_name}\n"
+            f"・展開先フォルダ: {dest_dir}\n"
+            f"・登録ゲーム数: {len(items)} 作品"
+        )
+        if archived_path and os.path.exists(archived_path):
+            msg += f"\n\n📦 元ZIPファイルを保管庫へ自動整理・退避しました:\n{archived_path}"
+
+        messagebox.showinfo("アーカイブ展開・自動整理完了", msg)
 
     def _open_edit_dialog_for_new(self, initial_data: Dict[str, Any]):
         def on_save(saved_data):
@@ -1942,6 +1882,68 @@ class ModernLauncherApp(ctk.CTk):
             self.refresh_games()
 
         IconPickerDialog(self, game.get("name", ""), game.get("path", ""), self.icon_helper, on_selected)
+
+    def _open_add_menu(self):
+        """「＋ ゲームを追加」ボタンが押された時のクイックメニュー"""
+        menu = tk.Menu(self, tearoff=0, font=(get_mac_font_family(), 10))
+        menu.add_command(label="📦 ZIPファイルを選択して追加・自動整理 (おすすめ)", command=self._pick_and_process_zip)
+        menu.add_command(label="📂 ダウンロードフォルダ内の未整理ZIPを一括インポート", command=self._import_downloaded_zips)
+        menu.add_separator()
+        menu.add_command(label="📁 ゲームフォルダまたはEXEを手動追加", command=self._open_add_dialog)
+
+        try:
+            x = self.add_app_btn.winfo_rootx()
+            y = self.add_app_btn.winfo_rooty() - 95
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def _pick_and_process_zip(self):
+        """ファイルダイアログからZIPを選択して自動展開・登録・整理"""
+        from tkinter import filedialog
+        chosen = filedialog.askopenfilename(
+            title="追加するゲームのZIPファイルを選択",
+            filetypes=[("ZIPアーカイブ", "*.zip"), ("すべてのファイル", "*.*")]
+        )
+        if chosen:
+            self._handle_dropped_zip(Path(chosen))
+
+    def _import_downloaded_zips(self):
+        """ダウンロードフォルダ等から未整理ZIPを探索して一括インポート"""
+        zips = ZipProcessor.find_downloaded_zips(self.config_mgr)
+        if not zips:
+            messagebox.showinfo("未整理ZIP検索", "ダウンロードフォルダに未展開のZIPアーカイブは見つかりませんでした。")
+            return
+
+        zip_names = "\n".join([f"・{z.name}" for z in zips[:8]])
+        if len(zips) > 8:
+            zip_names += f"\n...他 {len(zips)-8} 件"
+
+        if not messagebox.askyesno(
+            "一括ZIPインポート・整理",
+            f"ダウンロードフォルダ等から {len(zips)} 件のZIPアーカイブが見つかりました:\n\n{zip_names}\n\n"
+            f"これらを自動展開してライブラリに追加し、元ZIPを保管庫へ自動整理しますか？"
+        ):
+            return
+
+        def run_batch():
+            for z in zips:
+                try:
+                    ZipProcessor.process_zip(
+                        zip_path=z,
+                        config_mgr=self.config_mgr,
+                        icon_helper=self.icon_helper,
+                        status_callback=lambda msg, c: self.after(0, lambda: self.status_lbl.configure(text=msg, text_color=c))
+                    )
+                except Exception as e:
+                    print(f"Error processing {z}: {e}")
+            self.after(0, self.refresh_games)
+            self.after(0, lambda: messagebox.showinfo(
+                "一括インポート完了",
+                f"{len(zips)} 件のZIPアーカイブの自動展開と保管庫への整理が完了しました！"
+            ))
+
+        threading.Thread(target=run_batch, daemon=True).start()
 
     def _open_add_dialog(self):
         def on_save(saved_data):

@@ -1,3 +1,4 @@
+from zip_processor import ZipProcessor
 import os
 import threading
 import tkinter as tk
@@ -270,3 +271,18 @@ class FolderManagerDialog(ctk.CTkToplevel):
             text_color="#00ff9d" if is_ai_on else "#94a3b8"
         )
         messagebox.showinfo("設定完了", "Gemini API キーを保存しました！\n今後のタイトル検索・サムネイル取得で高精度AI解析が自動適用されます。")
+
+    def _browse_archive_dir(self):
+        chosen = filedialog.askdirectory(title="ZIPアーカイブの自動整理・保管先フォルダを選択")
+        if chosen:
+            self.archive_dir_entry.delete(0, "end")
+            self.archive_dir_entry.insert(0, chosen)
+            self._on_zip_setting_changed()
+
+    def _on_zip_setting_changed(self):
+        if "settings" not in self.config_mgr.config:
+            self.config_mgr.config["settings"] = {}
+        self.config_mgr.config["settings"]["auto_organize_zip"] = self.auto_org_var.get()
+        self.config_mgr.config["settings"]["rename_zip_with_title"] = self.rename_zip_var.get()
+        self.config_mgr.config["settings"]["zip_archive_dir"] = self.archive_dir_entry.get().strip()
+        self.config_mgr.save()
